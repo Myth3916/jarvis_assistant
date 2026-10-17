@@ -1,0 +1,23 @@
+# База данных (НИКОГДА не коммитим личные данные!)
+jarvis.db
+*.db
+
+# Виртуальное окружение Python
+venv/
+env/
+.venv/
+
+# Кэш Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Файлы IDE и ОС
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.log
+
+# Переменные окружения (на будущее, если добавишь API-ключи)
+.env

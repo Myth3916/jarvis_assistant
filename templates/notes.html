@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Заметки — Джарвис</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #00e5ff; text-align: center; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: #00e5ff; text-decoration: none; font-size: 1.1em; }
+        .back-link:hover { text-decoration: underline; }
+        
+        .form-card { background-color: #1e1e1e; padding: 20px; border-radius: 8px; margin-bottom: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; color: #b0bec5; font-weight: bold; }
+        input[type="text"], select, textarea { width: 100%; padding: 10px; background-color: #2d2d2d; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; font-size: 1em; box-sizing: border-box; font-family: inherit; }
+        textarea { min-height: 100px; resize: vertical; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #00e5ff; }
+        .submit-btn { background-color: #00e5ff; color: #121212; padding: 12px; border: none; border-radius: 4px; font-size: 1em; font-weight: bold; cursor: pointer; width: 100%; }
+        .submit-btn:hover { background-color: #00b8d4; }
+
+        .note-card { background-color: #1e1e1e; border-left: 5px solid #b0bec5; padding: 15px; margin-bottom: 15px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+        .note-title { font-size: 1.1em; font-weight: bold; margin-bottom: 8px; color: #e0e0e0; }
+        .note-meta { font-size: 0.85em; color: #888; margin-bottom: 10px; }
+        .note-content { font-size: 0.95em; line-height: 1.5; color: #ccc; white-space: pre-wrap; margin-bottom: 15px; }
+        .btn-delete { background-color: #ff5252; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; }
+        .btn-delete:hover { background-color: #ff1744; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← На главную</a>
+        <h1>📝 База знаний и Заметки</h1>
+        
+        <!-- Форма добавления -->
+        <div class="form-card">
+            <h2 style="color: #b0bec5; margin-top: 0;">➕ Добавить заметку</h2>
+            <form method="POST" action="/add_note">
+                <div class="form-group">
+                    <label for="title">Заголовок:</label>
+                    <input type="text" id="title" name="title" required placeholder="Например: Полис ОМС мамы">
+                </div>
+                <div style="display: flex; gap: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="area">Область:</label>
+                        <select id="area" name="area" required onchange="updateProjects()">
+                            {% for area in projects_by_area %}
+                            <option value="{{ area }}">{{ area }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="project">Проект:</label>
+                        <select id="project" name="project" required></select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="content">Текст заметки:</label>
+                    <textarea id="content" name="content" placeholder="Введи важную информацию, ссылки, номера..."></textarea>
+                </div>
+                <button type="submit" class="submit-btn">Сохранить заметку</button>
+            </form>
+        </div>
+
+        <!-- Список заметок -->
+        <h2 style="color: #b0bec5; border-bottom: 1px solid #333; padding-bottom: 10px;">📚 Твои заметки</h2>
+        
+        {% if notes %}
+            {% for note in notes %}
+            <div class="note-card">
+                <div class="note-title">{{ note['title'] }}</div>
+                <div class="note-meta">📂 {{ note['area'] }} | 📁 {{ note['project'] }} | 📅 {{ note['created_at'][:10] }}</div>
+                <div class="note-content">{{ note['content'] }}</div>
+                <form method="POST" action="/delete_note/{{ note['id'] }}" style="display: inline;">
+                    <button type="submit" class="btn-delete" onclick="return confirm('Удалить эту заметку?');">🗑️ Удалить</button>
+                </form>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p style="text-align: center; color: #69f0ae;">Заметок пока нет. Самое время начать сохранять важное!</p>
+        {% endif %}
+    </div>
+
+    <script>
+        const projectsByArea = {{ projects_by_area | tojson | safe }};
+        function updateProjects() {
+            const areaSelect = document.getElementById('area');
+            const projectSelect = document.getElementById('project');
+            const projects = projectsByArea[areaSelect.value] || ['Без проекта'];
+            projectSelect.innerHTML = '';
+            projects.forEach(proj => {
+                const option = document.createElement('option');
+                option.value = proj;
+                option.textContent = proj;
+                projectSelect.appendChild(option);
+            });
+        }
+        updateProjects();
+    </script>
+</body>
+</html>

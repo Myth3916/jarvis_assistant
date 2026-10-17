@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Архив — Джарвис</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #00e5ff; text-align: center; }
+        h2 { color: #b0bec5; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #00e5ff;
+            text-decoration: none;
+            font-size: 1.1em;
+        }
+        .back-link:hover { text-decoration: underline; }
+        
+        .task-card { 
+            background-color: #1e1e1e; 
+            border-left: 5px solid #69f0ae; 
+            padding: 15px; 
+            margin-bottom: 15px; 
+            border-radius: 4px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            opacity: 0.85;
+        }
+        .task-title { font-size: 1.1em; font-weight: bold; margin-bottom: 8px; text-decoration: line-through; color: #a0a0a0; }
+        .task-meta { font-size: 0.9em; color: #888; }
+        
+        .restore-btn {
+            background-color: #ffab40;
+            color: #121212;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.9em;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .restore-btn:hover { background-color: #ff9100; }
+        
+        .success-msg {
+            background-color: #69f0ae;
+            color: #121212;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Назад к активным задачам</a>
+        <h1>📦 Архив выполненных задач</h1>
+        
+        {% if restored %}
+        <div class="success-msg">✅ Задача возвращена в активные!</div>
+        {% endif %}
+        
+        {% if tasks %}
+            {% for task in tasks %}
+            <div class="task-card">
+                <div class="task-title">{{ task['title'] }}</div>
+                <div class="task-meta">
+                    <div class="task-meta">
+                        📂 {{ task['area'] }} | 📁 {{ task['project'] }}
+                        {% if task['due_date'] %} | 📅 Был срок: {{ task['due_date'] }} {% endif %}
+                        | ✅ Выполнено: {{ task['created_at'][:10] }}
+                    </div>
+                    {% if task['due_date'] %} | 📅 Срок: {{ task['due_date'] }} {% endif %}
+                    | ✅ Выполнено: {{ task['created_at'][:10] }}
+                </div>
+                <form method="POST" action="/restore_task/{{ task['id'] }}" style="display: inline;">
+                    <button type="submit" class="restore-btn">↺ Вернуть в активные</button>
+                </form>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p style="text-align: center; color: #69f0ae;">Архив пуст. Ты ещё ничего не выполнил!</p>
+        {% endif %}
+    </div>
+</body>
+</html>

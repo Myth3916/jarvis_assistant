@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Входящие — Джарвис</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #00e5ff; text-align: center; }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #00e5ff;
+            text-decoration: none;
+            font-size: 1.1em;
+        }
+        .back-link:hover { text-decoration: underline; }
+        
+        .intro-card {
+            background-color: #1e1e1e;
+            border-left: 5px solid #ffab40;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+        .intro-text { font-size: 1.1em; color: #e0e0e0; line-height: 1.6; }
+        
+        .task-card {
+            background-color: #1e1e1e;
+            border-left: 5px solid #ffab40;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+        .task-title { font-size: 1.1em; font-weight: bold; margin-bottom: 8px; }
+        .task-meta { font-size: 0.9em; color: #a0a0a0; margin-bottom: 15px; }
+        
+        .suggestion-box {
+            background-color: #2d2d2d;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 0.95em;
+        }
+        .suggestion-label { color: #b0bec5; margin-bottom: 8px; }
+        .suggested-priority { color: #00e5ff; font-weight: bold; }
+        
+        .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn-accept {
+            flex: 1; background-color: #4CAF50; color: white; padding: 10px;
+            border: none; border-radius: 4px; cursor: pointer; font-size: 0.95em; min-width: 120px;
+        }
+        .btn-accept:hover { background-color: #45a049; }
+        .btn-edit {
+            flex: 1; background-color: #ffab40; color: #121212; padding: 10px;
+            border: none; border-radius: 4px; cursor: pointer; font-size: 0.95em; min-width: 120px;
+        }
+        .btn-edit:hover { background-color: #ff9100; }
+        
+        .empty-state {
+            text-align: center; color: #69f0ae; padding: 40px; font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Назад к списку задач</a>
+        <h1>📥 Входящие</h1>
+        
+        <div class="intro-card">
+            <div class="intro-text">
+                Здесь задачи, которые ты добавил, но ещё не распределил по приоритетам. 
+                Джарвис предлагает вариант на основе анализа названия. 
+                Ты можешь согласиться или выбрать вручную.
+            </div>
+        </div>
+        
+        {% if tasks %}
+            {% for task in tasks %}
+            <div class="task-card">
+                <div class="task-title">{{ task['title'] }}</div>
+                <div class="task-meta">
+                     {{ task['area'] }} | 📁 {{ task['project'] }} | Добавлено: {{ task['created_at'][:10] }}
+                </div>
+                
+                <div class="suggestion-box">
+                    <div class="suggestion-label"> Джарвис предлагает:</div>
+                    <div class="suggested-priority">
+                        {% if task['suggested_priority'] == 'now' %}
+                            🔥 Сейчас (срочно)
+                        {% elif task['suggested_priority'] == 'later' %}
+                            ⏳ Позже (на неделе/месяце)
+                        {% elif task['suggested_priority'] == 'future' %}
+                            🗓️ На перспективу
+                        {% else %}
+                            📥 Оставить во входящих
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="btn-row">
+                    <form method="POST" action="/set_priority/{{ task['id'] }}" style="flex: 1;">
+                        <input type="hidden" name="priority" value="{{ 'later' if task['suggested_priority'] == 'inbox' else task['suggested_priority'] }}">
+                        <button type="submit" class="btn-accept">✓ Согласен</button>
+                    </form>
+                    <a href="/edit_task/{{ task['id'] }}" style="flex: 1; text-decoration: none;">
+                        <button type="button" class="btn-edit">✏️ Редактировать</button>
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                🎉 Входящих нет! Все задачи распределены.
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>

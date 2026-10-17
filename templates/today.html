@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>План на сегодня — Джарвис</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #00e5ff; text-align: center; }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #00e5ff;
+            text-decoration: none;
+            font-size: 1.1em;
+        }
+        .back-link:hover { text-decoration: underline; }
+        
+        /* Совет от Джарвиса */
+        .advice-card {
+            background-color: #1e1e1e;
+            border-left: 5px solid #00e5ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+        .advice-text {
+            font-size: 1.2em;
+            color: #e0e0e0;
+            line-height: 1.6;
+        }
+        
+        /* Статистика плана */
+        .plan-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .stat-box {
+            background-color: #1e1e1e;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+        }
+        .stat-label {
+            color: #b0bec5;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        /* Задачи */
+        .task-section {
+            margin-bottom: 30px;
+        }
+        .section-title {
+            color: #b0bec5;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        .task-card {
+            background-color: #1e1e1e;
+            border-left: 5px solid #00e5ff;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+        .task-title {
+            font-size: 1.1em;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .task-meta {
+            font-size: 0.9em;
+            color: #a0a0a0;
+        }
+        
+        .priority-now { border-left-color: #ff5252; }
+        .priority-later { border-left-color: #ffab40; }
+        .priority-future { border-left-color: #69f0ae; }
+        
+        .urgent-section .task-card { border-left-color: #ff5252; }
+        .deadline-section .task-card { border-left-color: #ffab40; }
+        .study-section .task-card { border-left-color: #00e5ff; }
+        .family-section .task-card { border-left-color: #69f0ae; }
+        .other-section .task-card { border-left-color: #78909c; }
+        
+        .empty-state {
+            text-align: center;
+            color: #69f0ae;
+            padding: 40px;
+            font-size: 1.1em;
+        }
+        
+        .category-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            margin-left: 10px;
+            background-color: #2d2d2d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Назад к списку задач</a>
+        <h1>📅 Умный план на сегодня</h1>
+        
+        <!-- Совет от Джарвиса -->
+        <div class="advice-card">
+            <div class="advice-text">{{ plan['advice'] }}</div>
+        </div>
+        
+        <!-- Статистика плана -->
+        <div class="plan-stats">
+            <div class="stat-box" style="border-top: 3px solid #ff5252;">
+                <div class="stat-number" style="color: #ff5252;">{{ plan['urgent_count'] }}</div>
+                <div class="stat-label">Срочных</div>
+            </div>
+            <div class="stat-box" style="border-top: 3px solid #00e5ff;">
+                <div class="stat-number" style="color: #00e5ff;">{{ plan['study_count'] }}</div>
+                <div class="stat-label">Учёба/Работа</div>
+            </div>
+            <div class="stat-box" style="border-top: 3px solid #69f0ae;">
+                <div class="stat-number" style="color: #69f0ae;">{{ plan['family_count'] }}</div>
+                <div class="stat-label">Семья/Мама</div>
+            </div>
+            <div class="stat-box" style="border-top: 3px solid #78909c;">
+                <div class="stat-number" style="color: #78909c;">{{ plan['other_count'] }}</div>
+                <div class="stat-label">Остальное</div>
+            </div>
+        </div>
+        
+        {% if plan['tasks'] %}
+            <!-- Просроченные -->
+            {% if plan['overdue_list'] %}
+            <div class="task-section urgent-section">
+                <h2 class="section-title"> Просроченные (сделать в первую очередь!)</h2>
+                {% for task in plan['overdue_list'] %}
+                <div class="task-card priority-{{ task['priority'] }}">
+                    <div class="task-title">{{ task['title'] }}</div>
+                    <div class="task-meta">
+                        📂 {{ task['area'] }} | 📁 {{ task['project'] }} | 🎯 {{ task['priority'] }}
+                        {% if task['due_date'] %} |  Срок: {{ task['due_date'] }} {% endif %}
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <form method="POST" action="/complete_task/{{ task['id'] }}" style="flex: 1;">
+                            <button type="submit" style="width: 100%; background-color: #4CAF50; color: white; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                                ✓ Выполнено
+                            </button>
+                        </form>
+                        <a href="/edit_task/{{ task['id'] }}" style="flex: 1; text-decoration: none;">
+                            <button type="button" style="width: 100%; background-color: #ffab40; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                                ✏️ Изменить
+                            </button>
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            
+            <!-- Дедлайн сегодня -->
+            {% if plan['today_list'] %}
+            <div class="task-section deadline-section">
+                <h2 class="section-title">🟠 Дедлайн сегодня</h2>
+                {% for task in plan['today_list'] %}
+                <div class="task-card priority-{{ task['priority'] }}">
+                    <div class="task-title">{{ task['title'] }}</div>
+                    <div class="task-meta">
+                        📂 {{ task['area'] }} | 📁 {{ task['project'] }} | 🎯 {{ task['priority'] }}
+                        {% if task['due_date'] %} |  Срок: {{ task['due_date'] }} {% endif %}
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <form method="POST" action="/complete_task/{{ task['id'] }}" style="flex: 1;">
+                            <button type="submit" style="width: 100%; background-color: #4CAF50; color: white; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                                ✓ Выполнено
+                            </button>
+                        </form>
+                        <a href="/edit_task/{{ task['id'] }}" style="flex: 1; text-decoration: none;">
+                            <button type="button" style="width: 100%; background-color: #ffab40; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                                ✏️ Изменить
+                            </button>
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            
+            <!-- Учёба/Работа -->
+            {% if plan['study_list'] %}
+            <div class="task-section study-section">
+                <h2 class="section-title">📚 Инвестиция в будущее (учёба/работа)</h2>
+                {% for task in plan['study_list'] %}
+                <div class="task-card priority-{{ task['priority'] }}">
+                    <div class="task-title">{{ task['title'] }}</div>
+                    <div class="task-meta">
+                        📂 {{ task['area'] }} | 📁 {{ task['project'] }} | 🎯 {{ task['priority'] }}
+                        {% if task['due_date'] %} |  Срок: {{ task['due_date'] }} {% endif %}
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <form method="POST" action="/complete_task/{{ task['id'] }}" style="flex: 1;">
+                            <button type="submit" style="width: 100%; background-color: #4CAF50; color: white; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                                ✓ Выполнено
+                            </button>
+                        </form>
+                        <a href="/edit_task/{{ task['id'] }}" style="flex: 1; text-decoration: none;">
+                            <button type="button" style="width: 100%; background-color: #ffab40; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                                ✏️ Изменить
+                            </button>
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            
+            <!-- Семья/Мама -->
+            {% if plan['family_list'] %}
+            <div class="task-section family-section">
+                <h2 class="section-title">👨‍👩‍ Близкие (семья/мама/здоровье)</h2>
+                {% for task in plan['family_list'] %}
+                <div class="task-card priority-{{ task['priority'] }}">
+                    <div class="task-title">{{ task['title'] }}</div>
+                    <div class="task-meta">
+                        📂 {{ task['area'] }} | 📁 {{ task['project'] }} | 🎯 {{ task['priority'] }}
+                        {% if task['due_date'] %} |  Срок: {{ task['due_date'] }} {% endif %}
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <form method="POST" action="/complete_task/{{ task['id'] }}" style="flex: 1;">
+                            <button type="submit" style="width: 100%; background-color: #4CAF50; color: white; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                                ✓ Выполнено
+                            </button>
+                        </form>
+                        <a href="/edit_task/{{ task['id'] }}" style="flex: 1; text-decoration: none;">
+                            <button type="button" style="width: 100%; background-color: #ffab40; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                                ✏️ Изменить
+                            </button>
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            
+            <!-- Остальное -->
+            {% if plan['other_list'] %}
+            <div class="task-section other-section">
+                <h2 class="section-title">⚪ Остальное (если успеешь)</h2>
+                {% for task in plan['other_list'] %}
+                <div class="task-card priority-{{ task['priority'] }}">
+                    <div class="task-title">{{ task['title'] }}</div>
+                    <div class="task-meta">
+                        📂 {{ task['area'] }} | 📁 {{ task['project'] }} | 🎯 {{ task['priority'] }}
+                        {% if task['due_date'] %} |  Срок: {{ task['due_date'] }} {% endif %}
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <form method="POST" action="/complete_task/{{ task['id'] }}" style="flex: 1;">
+                            <button type="submit" style="width: 100%; background-color: #4CAF50; color: white; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                                ✓ Выполнено
+                            </button>
+                        </form>
+                        <a href="/edit_task/{{ task['id'] }}" style="flex: 1; text-decoration: none;">
+                            <button type="button" style="width: 100%; background-color: #ffab40; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                                ✏️ Изменить
+                            </button>
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        {% else %}
+            <div class="empty-state">
+                🎉 На сегодня задач нет! Отличный день для отдыха или стратегического планирования.
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>

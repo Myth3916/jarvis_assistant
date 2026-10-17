@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Редактировать задачу — Джарвис</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        h1 { color: #00e5ff; text-align: center; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: #00e5ff; text-decoration: none; font-size: 1.1em; }
+        .back-link:hover { text-decoration: underline; }
+        .form-card { background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; color: #b0bec5; font-weight: bold; }
+        input[type="text"], input[type="date"], select { width: 100%; padding: 10px; background-color: #2d2d2d; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; font-size: 1em; box-sizing: border-box; }
+        input:focus, select:focus { outline: none; border-color: #00e5ff; }
+        .btn-row { display: flex; gap: 10px; margin-top: 20px; }
+        .btn-save { flex: 2; background-color: #00e5ff; color: #121212; padding: 12px; border: none; border-radius: 4px; font-size: 1em; font-weight: bold; cursor: pointer; }
+        .btn-save:hover { background-color: #00b8d4; }
+        .btn-cancel { flex: 1; background-color: #444; color: #e0e0e0; padding: 12px; border: none; border-radius: 4px; font-size: 1em; cursor: pointer; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; }
+        .btn-cancel:hover { background-color: #555; }
+        .danger-zone { margin-top: 30px; padding-top: 20px; border-top: 1px solid #333; }
+        .btn-delete { background-color: #ff5252; color: white; padding: 10px 20px; border: none; border-radius: 4px; font-size: 0.9em; cursor: pointer; }
+        .btn-delete:hover { background-color: #ff1744; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Назад к списку задач</a>
+        <h1>✏️ Редактировать задачу</h1>
+        
+        <div class="form-card">
+            <form method="POST" action="/edit_task/{{ task['id'] }}">
+                <div class="form-group">
+                    <label for="title">Что нужно сделать?</label>
+                    <input type="text" id="title" name="title" required value="{{ task['title'] }}">
+                </div>
+                
+                <div class="form-group">
+                    <label for="area">Область жизни:</label>
+                    <select id="area" name="area" required onchange="updateProjects()">
+                        <option value="Семья и близкие" {{ 'selected' if task['area'] == 'Семья и близкие' }}>👨‍👩‍👧‍👦 Семья и близкие</option>
+                        <option value="Работа и карьера" {{ 'selected' if task['area'] == 'Работа и карьера' }}>💼 Работа и карьера</option>
+                        <option value="Учёба и развитие" {{ 'selected' if task['area'] == 'Учёба и развитие' }}>📚 Учёба и развитие</option>
+                        <option value="Дом и хозяйство" {{ 'selected' if task['area'] == 'Дом и хозяйство' }}>🏠 Дом и хозяйство</option>
+                        <option value="Транспорт" {{ 'selected' if task['area'] == 'Транспорт' }}>🚗 Транспорт</option>
+                        <option value="Финансы" {{ 'selected' if task['area'] == 'Финансы' }}>💰 Финансы</option>
+                        <option value="Здоровье" {{ 'selected' if task['area'] == 'Здоровье' }}>❤️ Здоровье</option>
+                        <option value="Социальное" {{ 'selected' if task['area'] == 'Социальное' }}>🏘️ Социальное</option>
+                        <option value="Личные проекты" {{ 'selected' if task['area'] == 'Личные проекты' }}>🎯 Личные проекты</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="project">Проект / Контекст:</label>
+                    <select id="project" name="project" required></select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="priority">Приоритет:</label>
+                    <select id="priority" name="priority" required>
+                        <option value="inbox" {{ 'selected' if task['priority'] == 'inbox' }}>📥 Входящие</option>
+                        <option value="now" {{ 'selected' if task['priority'] == 'now' }}>🔥 Сейчас (срочно)</option>
+                        <option value="later" {{ 'selected' if task['priority'] == 'later' }}>⏳ Позже</option>
+                        <option value="future" {{ 'selected' if task['priority'] == 'future' }}>🗓️ На перспективу</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="due_date">Срок выполнения:</label>
+                    <input type="date" id="due_date" name="due_date" value="{{ task['due_date'] or '' }}">
+                </div>
+                
+                <div class="btn-row">
+                    <button type="submit" class="btn-save">💾 Сохранить</button>
+                    <a href="/" class="btn-cancel">Отмена</a>
+                </div>
+            </form>
+            
+            <div class="danger-zone">
+                <p style="color: #ff5252; font-size: 0.9em; margin-bottom: 10px;">⚠️ Опасная зона</p>
+                <form method="POST" action="/delete_task/{{ task['id'] }}" style="display: inline;">
+                    <button type="submit" class="btn-delete" onclick="return confirm('Точно удалить задачу? Это действие нельзя отменить.');">🗑️ Удалить навсегда</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Безопасная передача данных из Python в JavaScript
+        const projectsByArea = {{ projects_by_area | tojson | safe }};
+        const currentProject = {{ task['project'] | tojson | safe }};
+
+        function updateProjects() {
+            const areaSelect = document.getElementById('area');
+            const projectSelect = document.getElementById('project');
+            const selectedArea = areaSelect.value;
+            const projects = projectsByArea[selectedArea] || ['Без проекта'];
+            
+            projectSelect.innerHTML = '';
+            projects.forEach(proj => {
+                const option = document.createElement('option');
+                option.value = proj;
+                option.textContent = proj;
+                // Выбираем текущий проект задачи по умолчанию
+                if (proj === currentProject) {
+                    option.selected = true;
+                }
+                projectSelect.appendChild(option);
+            });
+        }
+        
+        // Инициализация при загрузке страницы
+        updateProjects();
+    </script>
+</body>
+</html>
