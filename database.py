@@ -793,5 +793,126 @@ def toggle_pin_task(task_id: int):
     conn.commit()
     conn.close()
 
+def get_weekly_report():
+    """Анализирует выполненные задачи за последние 7 дней, цели и даёт подробный стратегический разбор."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    
+    # 1. Получаем выполненные задачи за неделю
+    cursor.execute('''
+        SELECT t.*, COALESCE(p.strategic_weight, 5) as project_weight
+        FROM tasks t
+        LEFT JOIN projects p ON t.area = p.area AND t.project = p.name
+        WHERE t.status = 'done' AND t.created_at >= ?
+        ORDER BY t.created_at DESC
+    ''', (week_ago,))
+    
+    tasks = [dict(row) for row in cursor.fetchall()]
+    
+    # 2. Получаем стратегические цели (проекты с весом 8-10)
+    cursor.execute('''
+        SELECT area, name, strategic_weight 
+        FROM projects 
+        WHERE strategic_weight >= 8 AND is_archived = 0
+        ORDER BY strategic_weight DESC, name ASC
+    ''')
+    goals = [dict(row) for row in cursor.fetchall()]
+    
+    # 3. Считаем прогресс по каждой цели
+    for goal in goals:
+        cursor.execute('''
+            SELECT COUNT(*) as count 
+            FROM tasks 
+            WHERE status = 'done' 
+            AND area = ? 
+            AND project = ? 
+            AND created_at >= ?
+        ''', (goal['area'], goal['name'], week_ago))
+        goal['completed_count'] = cursor.fetchone()['count']
+        
+    conn.close()
+    
+    # 4. Считаем общую статистику
+    total = len(tasks)
+    high_weight = len([t for t in tasks if t.get('project_weight', 5) >= 8])
+    medium_weight = len([t for t in tasks if 4 <= t.get('project_weight', 5) <= 7])
+    low_weight = len([t for t in tasks if t.get('project_weight', 5) <= 3])
+    
+    if total > 0:
+        high_pct = round(high_weight / total * 100)
+        medium_pct = round(medium_weight / total * 100)
+        low_pct = round(low_weight / total * 100)
+        tasks_per_day = round(total / 7, 1)
+    else:
+        high_pct = medium_pct = low_pct = 0
+        tasks_per_day = 0
+    
+    # 5. Генерируем анализ (тем, что было раньше)
+    analysis = {
+        "tempo": "",
+        "good": [],
+        "trap": "",
+        "recommendations": []
+    }
+    
+    if total == 0:
+        analysis["tempo"] = "😴 За неделю не выполнено ни одной задачи."
+    elif tasks_per_day >= 2.5:
+        analysis["tempo"] = f"🔥 Высокий темп! {total} задач за неделю ({tasks_per_day} в день)."
+    elif tasks_per_day >= 1:
+        analysis["tempo"] = f"✅ Хороший темп. {total} задач за неделю ({tasks_per_day} в день)."
+    else:
+        analysis["tempo"] = f" Спокойная неделя. {total} задач."
+    
+    if high_weight > 0:
+        analysis["good"].append(f"Стратегические задачи присутствуют ({high_weight} шт.) — ты не полностью ушёл в операционку.")
+    if low_weight <= 2:
+        analysis["good"].append("Рутины минимум — ты умеешь фокусироваться на важном.")
+    if not analysis["good"]:
+        analysis["good"].append("Ты вообще делаешь задачи — это уже лучше, чем ничего.")
+        
+    if total == 0:
+        analysis["trap"] = "Главная ловушка: отсутствие движения."
+    elif high_pct < 30 and medium_pct > 50:
+        analysis["trap"] = f"️ {medium_pct}% энергии уходит в «среднюю зону». Классическая ситуация: «Я занят весь день, но к главному не приблизился»."
+    elif high_weight == 0:
+        analysis["trap"] = "За неделю ни одной задачи из стратегических проектов."
+    else:
+        analysis["trap"] = "Явных ловушек не вижу. Ты в хорошем балансе."
+        
+    if high_pct < 40 and total > 0:
+        needed = max(1, int(total * 0.4) - high_weight)
+        analysis["recommendations"].append(f"Добавь {needed} маленькие задачи из проектов с весом 8-10 на следующую неделю.")
+    if medium_pct > 50:
+        analysis["recommendations"].append("Посмотри на свои «средние» задачи. Какие можно делегировать или отложить?")
+    analysis["recommendations"].append("Правило: утро — для стратегического, день — для среднего.")
+    
+    # 6. Общий совет
+    if total == 0:
+        advice_text = "😴 За неделю не выполнено ни одной задачи. Возможно, стоит пересмотреть план?"
+        advice_color = "#ffab40"
+    elif high_pct >= 40:
+        advice_text = f"🚀 Отличная неделя! {high_pct}% задач — стратегические. Ты движешься к главному!"
+        advice_color = "#69f0ae"
+    elif high_weight == 0:
+        advice_text = "⚠️ За неделю ни одной задачи из стратегических проектов. Давай добавим одну маленькую задачу по важной цели."
+        advice_color = "#ff5252"
+    else:
+        advice_text = f"✅ Хорошая работа! {total} задач, {high_pct}% — стратегических. Продолжай!"
+        advice_color = "#00e5ff"
+    
+    return {
+        "tasks": tasks,
+        "goals": goals,  # <-- Передаём цели в шаблон
+        "stats": {
+            "total": total, "high": high_weight, "medium": medium_weight, "low": low_weight,
+            "high_pct": high_pct, "medium_pct": medium_pct, "low_pct": low_pct, "tasks_per_day": tasks_per_day
+        },
+        "analysis": analysis,
+        "advice": {"text": advice_text, "color": advice_color}
+    }
+
 # Инициализация при импорте
 init_db()

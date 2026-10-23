@@ -15,7 +15,8 @@ from database import (
     delete_seasonal_reminder, toggle_seasonal_reminder,
     get_temperature_reminders, add_temperature_reminder, delete_temperature_reminder,
     toggle_temperature_reminder, get_active_temperature_hints, update_temperature_reminder,
-    toggle_pin_task, get_today_plan
+    toggle_pin_task, get_today_plan,
+    toggle_pin_task, get_today_plan, get_weekly_report
 )
 
 
@@ -337,6 +338,15 @@ async def edit_temperature_reminder_handler(
 async def toggle_pin_handler(task_id: int):
     toggle_pin_task(task_id)
     return RedirectResponse(url="/today", status_code=303)
+
+@app.get("/report", response_class=HTMLResponse)
+async def weekly_report_page(request: Request):
+    """Страница еженедельного стратегического отчёта."""
+    report = get_weekly_report()
+    return templates.TemplateResponse(
+        request=request, name="report.html", 
+        context={"user_name": "Олег", "report": report}
+    )
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)

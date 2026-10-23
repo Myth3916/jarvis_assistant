@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Стратегический отчёт — Джарвис</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { color: #00e5ff; text-align: center; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: #00e5ff; text-decoration: none; font-size: 1.1em; }
+        .back-link:hover { text-decoration: underline; }
+
+        .advice-card { 
+            background-color: #1e1e1e; 
+            padding: 20px; 
+            border-radius: 8px; 
+            margin-bottom: 30px; 
+            border-left: 5px solid;
+            font-size: 1.1em;
+            line-height: 1.5;
+        }
+
+        .stats-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); 
+            gap: 15px; 
+            margin-bottom: 30px; 
+        }
+        .stat-box { 
+            background-color: #1e1e1e; 
+            padding: 15px; 
+            border-radius: 8px; 
+            text-align: center; 
+            border-top: 4px solid;
+        }
+        .stat-number { font-size: 2em; font-weight: bold; margin-bottom: 5px; }
+        .stat-label { color: #888; font-size: 0.9em; }
+
+        .analysis-section {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .analysis-section h2 {
+            color: #00e5ff;
+            margin-top: 0;
+            font-size: 1.3em;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+        .analysis-section h3 {
+            color: #b0bec5;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+        .analysis-section p {
+            line-height: 1.6;
+            color: #e0e0e0;
+        }
+        .analysis-section ul {
+            padding-left: 20px;
+        }
+        .analysis-section li {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+        .good-item { color: #69f0ae; }
+        .trap-text { color: #ffab40; font-style: italic; }
+        .rec-item { color: #00e5ff; }
+        
+        .ratio-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .ratio-table th, .ratio-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+        .ratio-table th { color: #888; font-size: 0.9em; }
+        
+        /* Вертикальный список задач */
+        .task-list {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .task-item { 
+            background-color: #1e1e1e; 
+            padding: 12px 15px; 
+            border-radius: 4px; 
+            border-left: 4px solid #666;
+        }
+        .task-title { font-weight: bold; font-size: 1.05em; margin-bottom: 4px; }
+        .task-meta { font-size: 0.85em; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← На главную</a>
+        <h1>📊 Стратегический отчёт за неделю</h1>
+
+        <!-- Короткий совет от Джарвиса -->
+        <div class="advice-card" style="border-left-color: {{ report['advice']['color'] }}; color: {{ report['advice']['color'] }};">
+            {{ report['advice']['text'] }}
+        </div>
+
+        <!-- Блок стратегических целей -->
+        {% if report['goals'] %}
+        <div class="analysis-section" style="border-left: 5px solid #ff5252;">
+            <h2>🎯 Твои стратегические цели (вес 8-10)</h2>
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                {% for goal in report['goals'] %}
+                <div style="background-color: #2d2d2d; padding: 15px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: bold; font-size: 1.1em; color: #e0e0e0;">
+                            {{ goal['name'] }} <span style="color: #888; font-size: 0.9em;">({{ goal['area'] }})</span>
+                        </div>
+                        <div style="color: #ff5252; font-size: 0.9em; margin-top: 4px;">⭐ Вес: {{ goal['strategic_weight'] }}/10</div>
+                    </div>
+                    <div style="text-align: right;">
+                        {% if goal['completed_count'] > 0 %}
+                            <div style="color: #69f0ae; font-weight: bold; font-size: 1.2em;">✅ {{ goal['completed_count'] }} задач</div>
+                            <div style="color: #69f0ae; font-size: 0.85em;">Прогресс есть!</div>
+                        {% else %}
+                            <div style="color: #ffab40; font-weight: bold; font-size: 1.2em;">0 задач</div>
+                            <div style="color: #ffab40; font-size: 0.85em;">Нет движения ⚠️</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Карточки статистики -->
+        <div class="stats-grid">
+            <div class="stat-box" style="border-top-color: #00e5ff;">
+                <div class="stat-number" style="color: #00e5ff;">{{ report['stats']['total'] }}</div>
+                <div class="stat-label">Всего выполнено ({{ report['stats']['tasks_per_day'] }}/день)</div>
+            </div>
+            <div class="stat-box" style="border-top-color: #ff5252;">
+                <div class="stat-number" style="color: #ff5252;">{{ report['stats']['high'] }} <span style="font-size: 0.5em;">({{ report['stats']['high_pct'] }}%)</span></div>
+                <div class="stat-label">Стратегические (8-10)</div>
+            </div>
+            <div class="stat-box" style="border-top-color: #ffab40;">
+                <div class="stat-number" style="color: #ffab40;">{{ report['stats']['medium'] }} <span style="font-size: 0.5em;">({{ report['stats']['medium_pct'] }}%)</span></div>
+                <div class="stat-label">Средние (4-7)</div>
+            </div>
+            <div class="stat-box" style="border-top-color: #888;">
+                <div class="stat-number" style="color: #888;">{{ report['stats']['low'] }} <span style="font-size: 0.5em;">({{ report['stats']['low_pct'] }}%)</span></div>
+                <div class="stat-label">Рутина (1-3)</div>
+            </div>
+        </div>
+
+        <!-- Подробный разбор -->
+        <div class="analysis-section">
+            <h2> Разбор твоих цифр за неделю</h2>
+            
+            <h3>📈 Темп</h3>
+            <p>{{ report['analysis']['tempo'] }}</p>
+            
+            <h3>✅ Что хорошо</h3>
+            <ul>
+                {% for item in report['analysis']['good'] %}
+                <li class="good-item">{{ item }}</li>
+                {% endfor %}
+            </ul>
+            
+            <h3>⚠️ Где ловушка</h3>
+            <p class="trap-text">{{ report['analysis']['trap'] }}</p>
+            
+            <h3>🎯 Целевое соотношение</h3>
+            <table class="ratio-table">
+                <tr>
+                    <th>Категория</th>
+                    <th>У тебя сейчас</th>
+                    <th>Цель для роста</th>
+                </tr>
+                <tr>
+                    <td style="color: #ff5252;">Стратегические (8-10)</td>
+                    <td>{{ report['stats']['high_pct'] }}%</td>
+                    <td>40-50%</td>
+                </tr>
+                <tr>
+                    <td style="color: #ffab40;">Средние (4-7)</td>
+                    <td>{{ report['stats']['medium_pct'] }}%</td>
+                    <td>40-50%</td>
+                </tr>
+                <tr>
+                    <td style="color: #888;">Рутина (1-3)</td>
+                    <td>{{ report['stats']['low_pct'] }}%</td>
+                    <td>5-10%</td>
+                </tr>
+            </table>
+            
+            <h3>💡 Конкретные рекомендации на следующую неделю</h3>
+            <ul>
+                {% for rec in report['analysis']['recommendations'] %}
+                <li class="rec-item">{{ rec }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- Список выполненных задач (вертикальный) -->
+        <h2 style="color: #b0bec5; border-bottom: 1px solid #333; padding-bottom: 10px; margin-top: 30px;">📋 Что было сделано</h2>
+        <div class="task-list">
+            {% if report['tasks'] %}
+                {% for task in report['tasks'] %}
+                <div class="task-item" style="border-left-color: {% if task['project_weight'] >= 8 %}#ff5252{% elif task['project_weight'] <= 3 %}#888{% else %}#ffab40{% endif %};">
+                    <div class="task-title">{{ task['title'] }}</div>
+                    <div class="task-meta">
+                        📂 {{ task['area'] }} | 📁 {{ task['project'] }} |  Вес: {{ task['project_weight'] }}/10
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p style="text-align: center; color: #666; padding: 20px;">За эту неделю задач не выполнено.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
