@@ -47,6 +47,12 @@
                     <label for="name">Название проекта:</label>
                     <input type="text" id="name" name="name" required value="{{ project['name'] }}">
                 </div>
+
+                <div class="form-group">
+                    <label for="strategic_weight">Стратегический вес (1-10):</label>
+                    <input type="number" id="strategic_weight" name="strategic_weight" min="1" max="10" value="{{ project['strategic_weight'] or 5 }}" required>
+                    <small style="color: #888; display: block; margin-top: 4px;">10 = Ключевая цель, 1 = Рутинная мелочь</small>
+                </div>
                 
                 <div class="btn-row">
                     <button type="submit" class="btn-save">💾 Сохранить</button>

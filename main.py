@@ -10,7 +10,12 @@ from database import (
     add_note, get_all_notes, delete_note, get_projects_by_area,
     add_project, archive_project, get_all_projects, PROJECTS_BY_AREA, update_project,
     restore_project, can_delete_project, delete_project,
-    complete_task_and_reschedule
+    complete_task_and_reschedule,
+    get_seasonal_reminders, add_seasonal_reminder, update_seasonal_reminder,
+    delete_seasonal_reminder, toggle_seasonal_reminder,
+    get_temperature_reminders, add_temperature_reminder, delete_temperature_reminder,
+    toggle_temperature_reminder, get_active_temperature_hints, update_temperature_reminder,
+    toggle_pin_task, get_today_plan
 )
 
 
@@ -20,12 +25,22 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request, added: int = Query(default=0), area: str = Query(default=None)):
-        
     tasks = get_tasks_with_deadline_info(area)
     stats = get_stats()
     hints = get_seasonal_hints()
+    temp_hints = get_active_temperature_hints()
     fasting = get_fasting_status()
-    projects_by_area = get_projects_by_area()  # <-- Теперь из БД!
+    projects_by_area = get_projects_by_area()
+    
+    # Получаем краткую сводку на сегодня для главной страницы
+    today_plan = get_today_plan()
+    today_summary = {
+        'total': today_plan['stats']['total'],
+        'urgent': today_plan['stats']['urgent_count'],
+        'overdue': today_plan['stats']['overdue_count'],
+        # Берём топ-3 задачи: сначала срочные, потом просроченные
+        'top_tasks': (today_plan['urgent_list'] + today_plan['overdue_list'])[:3]
+    }
     
     return templates.TemplateResponse(
         request=request, name="index.html",
@@ -35,9 +50,11 @@ async def home(request: Request, added: int = Query(default=0), area: str = Quer
             "added": added, 
             "current_area": area, 
             "stats": stats,
-            "projects_by_area": projects_by_area,  # <-- Динамические проекты
+            "projects_by_area": projects_by_area,
             "seasonal_hints": hints,
-            "fasting": fasting
+            "temperature_hints": temp_hints,
+            "fasting": fasting,
+            "today_summary": today_summary
         }
     )
 
@@ -47,9 +64,16 @@ async def add_task_handler(request: Request, title: str = Form(...), area: str =
     return RedirectResponse(url="/?added=1", status_code=303)
 
 @app.post("/complete_task/{task_id}")
-async def complete_task_handler(task_id: int):
+async def complete_task_handler(task_id: int, from_page: str = Form(default="home")):
     complete_task_and_reschedule(task_id)
-    return RedirectResponse(url="/", status_code=303)
+    
+    # Возвращаемся туда, откуда пришли
+    if from_page == "today":
+        return RedirectResponse(url="/today", status_code=303)
+    elif from_page == "inbox":
+        return RedirectResponse(url="/inbox", status_code=303)
+    else:
+        return RedirectResponse(url="/", status_code=303)
 
 @app.get("/archive", response_class=HTMLResponse)
 async def archive(request: Request, restored: int = Query(default=0)):
@@ -69,12 +93,24 @@ async def today_plan(request: Request):
 
 @app.get("/inbox", response_class=HTMLResponse)
 async def inbox_page(request: Request):
+    # get_inbox_tasks() теперь возвращает задачи с полем project_weight и сортирует по весу
     tasks = get_inbox_tasks()
+    
+    # Добавляем рекомендуемый приоритет для каждой задачи
     tasks_with_suggestions = []
     for task in tasks:
         task['suggested_priority'] = suggest_priority(task['title'], task['area'])
         tasks_with_suggestions.append(task)
-    return templates.TemplateResponse(request=request, name="inbox.html", context={"user_name": "Олег", "tasks": tasks_with_suggestions})
+    
+    return templates.TemplateResponse(
+        request=request, 
+        name="inbox.html", 
+        context={
+            "user_name": "Олег", 
+            "tasks": tasks_with_suggestions,
+            "has_tasks": len(tasks) > 0  # Флаг для шаблона
+        }
+    )
 
 @app.post("/set_priority/{task_id}")
 async def set_priority_handler(task_id: int, priority: str = Form(...)):
@@ -82,19 +118,42 @@ async def set_priority_handler(task_id: int, priority: str = Form(...)):
     return RedirectResponse(url="/inbox", status_code=303)
 
 @app.get("/edit_task/{task_id}", response_class=HTMLResponse)
-async def edit_task_page(request: Request, task_id: int):
+async def edit_task_page(request: Request, task_id: int, from_page: str = Query(default="home")):
     task = get_task_by_id(task_id)
     if not task: return HTMLResponse("Задача не найдена", status_code=404)
-    projects_by_area = get_projects_by_area()  # <-- Динамически из БД
+    projects_by_area = get_projects_by_area()
     return templates.TemplateResponse(
         request=request, name="edit_task.html", 
-        context={"user_name": "Олег", "task": task, "projects_by_area": projects_by_area}
+        context={
+            "user_name": "Олег", 
+            "task": task, 
+            "projects_by_area": projects_by_area,
+            "from_page": from_page
+        }
     )
 
 @app.post("/edit_task/{task_id}")
-async def edit_task_handler(task_id: int, title: str = Form(...), area: str = Form(...), project: str = Form(...), priority: str = Form(...), due_date: str = Form(None)):
-    update_task(task_id, title, area, project, priority, due_date if due_date else None)
-    return RedirectResponse(url="/", status_code=303)
+async def edit_task_handler(
+    task_id: int, 
+    title: str = Form(...), 
+    area: str = Form(...), 
+    project: str = Form(...), 
+    priority: str = Form(...), 
+    due_date: str = Form(None),
+    repeat: str = Form("none"),
+    from_page: str = Form("home")
+):
+    update_task(task_id, title, area, project, priority, due_date if due_date else None, repeat)
+    
+    # Редиректим туда, откуда пришли
+    if from_page == "inbox":
+        return RedirectResponse(url="/inbox", status_code=303)
+    elif from_page == "today":
+        return RedirectResponse(url="/today", status_code=303)
+    elif from_page == "archive":
+        return RedirectResponse(url="/archive", status_code=303)
+    else:
+        return RedirectResponse(url="/", status_code=303)
 
 @app.post("/delete_task/{task_id}")
 async def delete_task_handler(task_id: int):
@@ -104,27 +163,29 @@ async def delete_task_handler(task_id: int):
 @app.get("/notes", response_class=HTMLResponse)
 async def notes_page(request: Request):
     notes = get_all_notes()
-    projects_by_area = get_projects_by_area()  # <-- Динамически из БД
+    projects_by_area = get_projects_by_area()
     return templates.TemplateResponse(
         request=request, name="notes.html",
-        context={"user_name": "Олег", "notes": notes, "projects_by_area": projects_by_area}
+        context={
+            "user_name": "Олег", 
+            "notes": notes, 
+            "projects_by_area": projects_by_area,
+            "areas": list(PROJECTS_BY_AREA.keys())
+        }
     )
 
 @app.post("/add_note")
 async def add_note_handler(request: Request, area: str = Form(...), project: str = Form(...), title: str = Form(...), content: str = Form("")):
-    """Добавляет заметку и возвращает на страницу заметок."""
     add_note(area, project, title, content)
     return RedirectResponse(url="/notes", status_code=303)
 
 @app.post("/delete_note/{note_id}")
 async def delete_note_handler(note_id: int):
-    """Удаляет заметку."""
     delete_note(note_id)
     return RedirectResponse(url="/notes", status_code=303)
 
 @app.get("/projects", response_class=HTMLResponse)
 async def projects_page(request: Request):
-    """Страница управления проектами."""
     projects = get_all_projects()
     return templates.TemplateResponse(
         request=request, name="projects.html",
@@ -132,20 +193,22 @@ async def projects_page(request: Request):
     )
 
 @app.post("/add_project")
-async def add_project_handler(request: Request, area: str = Form(...), name: str = Form(...)):
-    """Добавляет новый проект."""
-    add_project(area, name)
+async def add_project_handler(
+    request: Request, 
+    area: str = Form(...), 
+    name: str = Form(...),
+    strategic_weight: int = Form(5)
+):
+    add_project(area, name, strategic_weight)
     return RedirectResponse(url="/projects", status_code=303)
 
 @app.post("/archive_project/{project_id}")
 async def archive_project_handler(project_id: int):
-    """Архивирует проект."""
     archive_project(project_id)
     return RedirectResponse(url="/projects", status_code=303)
 
 @app.get("/edit_project/{project_id}", response_class=HTMLResponse)
 async def edit_project_page(request: Request, project_id: int):
-    """Страница редактирования проекта."""
     from database import get_connection
     conn = get_connection()
     cursor = conn.cursor()
@@ -162,26 +225,118 @@ async def edit_project_page(request: Request, project_id: int):
     )
 
 @app.post("/edit_project/{project_id}")
-async def edit_project_handler(project_id: int, area: str = Form(...), name: str = Form(...)):
-    """Сохраняет изменения проекта (название и/или область)."""
-    update_project(project_id, name, area)
+async def edit_project_handler(
+    project_id: int, 
+    area: str = Form(...), 
+    name: str = Form(...),
+    strategic_weight: int = Form(5)
+):
+    update_project(project_id, name, area, strategic_weight)
     return RedirectResponse(url="/projects", status_code=303)
 
 @app.post("/restore_project/{project_id}")
 async def restore_project_handler(project_id: int):
-    """Восстанавливает проект из архива."""
     restore_project(project_id)
     return RedirectResponse(url="/projects", status_code=303)
 
 @app.post("/delete_project/{project_id}")
 async def delete_project_handler(project_id: int):
-    """Удаляет проект навсегда (с проверкой безопасности)."""
     can_delete, message = can_delete_project(project_id)
     if not can_delete:
-        # Если нельзя удалить — показываем предупреждение
         return HTMLResponse(f"<h1>⚠️ Нельзя удалить проект</h1><p>{message}</p><a href='/projects'>← Назад</a>", status_code=400)
     delete_project(project_id)
     return RedirectResponse(url="/projects", status_code=303)
+
+@app.get("/seasonal", response_class=HTMLResponse)
+async def seasonal_page(request: Request):
+    reminders = get_seasonal_reminders()
+    temp_reminders = get_temperature_reminders()  
+    return templates.TemplateResponse(
+        request=request, name="seasonal.html",
+        context={
+            "user_name": "Олег", 
+            "reminders": reminders, 
+            "temp_reminders": temp_reminders,  
+            "projects_by_area": get_projects_by_area(),
+            "areas": list(PROJECTS_BY_AREA.keys())
+        }
+    )
+
+@app.post("/add_seasonal_reminder")
+async def add_seasonal_reminder_handler(
+    request: Request,
+    title: str = Form(...),
+    area: str = Form(...),
+    project: str = Form(...),
+    month_start: int = Form(...),
+    month_end: int = Form(...),
+    priority: str = Form("later")
+):
+    add_seasonal_reminder(title, area, project, month_start, month_end, priority)
+    return RedirectResponse(url="/seasonal", status_code=303)
+
+@app.post("/edit_seasonal_reminder/{reminder_id}")
+async def edit_seasonal_reminder_handler(
+    reminder_id: int,
+    title: str = Form(...),
+    area: str = Form(...),
+    project: str = Form(...),
+    month_start: int = Form(...),
+    month_end: int = Form(...),
+    priority: str = Form(...)
+):
+    update_seasonal_reminder(reminder_id, title, area, project, month_start, month_end, priority)
+    return RedirectResponse(url="/seasonal", status_code=303)
+
+@app.post("/delete_seasonal_reminder/{reminder_id}")
+async def delete_seasonal_reminder_handler(reminder_id: int):
+    delete_seasonal_reminder(reminder_id)
+    return RedirectResponse(url="/seasonal", status_code=303)
+
+@app.post("/toggle_seasonal_reminder/{reminder_id}")
+async def toggle_seasonal_reminder_handler(reminder_id: int):
+    toggle_seasonal_reminder(reminder_id)
+    return RedirectResponse(url="/seasonal", status_code=303)
+
+@app.post("/add_temperature_reminder")
+async def add_temperature_reminder_handler(
+    title: str = Form(...),
+    area: str = Form(...),
+    project: str = Form(...),
+    operator: str = Form(...),
+    temperature: float = Form(...),
+    priority: str = Form("later")
+):
+    add_temperature_reminder(title, area, project, operator, temperature, priority)
+    return RedirectResponse(url="/seasonal", status_code=303)
+
+@app.post("/delete_temperature_reminder/{reminder_id}")
+async def delete_temperature_reminder_handler(reminder_id: int):
+    delete_temperature_reminder(reminder_id)
+    return RedirectResponse(url="/seasonal", status_code=303)
+
+@app.post("/toggle_temperature_reminder/{reminder_id}")
+async def toggle_temperature_reminder_handler(reminder_id: int):
+    toggle_temperature_reminder(reminder_id)
+    return RedirectResponse(url="/seasonal", status_code=303)
+
+@app.post("/edit_temperature_reminder/{reminder_id}")
+async def edit_temperature_reminder_handler(
+    reminder_id: int,
+    title: str = Form(...),
+    area: str = Form(...),
+    project: str = Form(...),
+    operator: str = Form(...),
+    temperature: float = Form(...),
+    priority: str = Form(...)
+):
+    update_temperature_reminder(reminder_id, title, area, project, operator, temperature, priority)
+    return RedirectResponse(url="/seasonal", status_code=303)
+
+@app.post("/toggle_pin/{task_id}")
+async def toggle_pin_handler(task_id: int):
+    toggle_pin_task(task_id)
+    return RedirectResponse(url="/today", status_code=303)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)

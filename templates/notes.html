@@ -45,8 +45,11 @@
                     <div class="form-group" style="flex: 1;">
                         <label for="area">Область:</label>
                         <select id="area" name="area" required onchange="updateProjects()">
-                            {% for area in projects_by_area %}
-                            <option value="{{ area }}">{{ area }}</option>
+                            <option value="Личные проекты" selected>🎯 Личные проекты</option>
+                            {% for area in areas %}
+                                {% if area != 'Личные проекты' %}
+                                <option value="{{ area }}">{{ area }}</option>
+                                {% endif %}
                             {% endfor %}
                         </select>
                     </div>

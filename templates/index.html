@@ -109,18 +109,98 @@
                     </button>
                 </form>
                 {% endfor %}
+                {% for hint in temperature_hints %}
+                <form method="POST" action="/add_task" style="display: flex; gap: 10px; align-items: center; margin: 0;">
+                    <input type="hidden" name="title" value="{{ hint['title'] }}">
+                    <input type="hidden" name="area" value="{{ hint['area'] }}">
+                    <input type="hidden" name="project" value="{{ hint['project'] }}">
+                    <input type="hidden" name="priority" value="{{ hint['priority'] }}">
+                    
+                    <button type="submit" style="background: none; border: 1px solid #444; color: #e0e0e0; padding: 10px 15px; border-radius: 4px; cursor: pointer; text-align: left; flex-grow: 1; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s;" onmouseover="this.style.borderColor='#00e5ff'; this.style.color='#00e5ff'" onmouseout="this.style.borderColor='#444'; this.style.color='#e0e0e0'">
+                        <span>🌡️ {{ hint['title'] }} <span style="font-size: 0.85em; color: #888;">({{ hint['operator_ru'] }} {{ hint['trigger_temp'] }}°C {{ hint['trigger_date'] }})</span></span>
+                        <span style="font-size: 0.8em; color: #888;">{{ hint['area'] }} / {{ hint['project'] }} ➕</span>
+                    </button>
+                </form>
+                {% endfor %}
             </div>
         </div>
         {% endif %}
         
         <!-- Навигация -->
-        <div class="archive-link">
-            <a href="/inbox" style="color: #ffab40; font-weight: bold;">📥 Входящие ({{ stats.get('inbox_count', 0) }}) →</a>
-            <a href="/today" style="color: #00e5ff;">📅 План на сегодня →</a>
-            <a href="/notes" style="color: #b0bec5;">📝 Заметки →</a>
-            <a href="/projects" style="color: #69f0ae;">📁 Проекты →</a>
-            <a href="/archive" style="color: #b0bec5;">📦 Архив →</a>
+        <!-- Главная кнопка: План на сегодня -->
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="/today" style="text-decoration: none;">
+                <button style="background: linear-gradient(135deg, #00e5ff 0%, #00b8d4 100%); color: #121212; padding: 18px 40px; border: none; border-radius: 8px; font-size: 1.3em; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0, 229, 255, 0.4); transition: all 0.3s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(0, 229, 255, 0.6)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(0, 229, 255, 0.4)'">
+                    📅 Открыть план на сегодня
+                </button>
+            </a>
         </div>
+        <!-- Мини-план: Сегодня в фокусе -->
+        {% if today_summary['total'] > 0 %}
+        <div style="background-color: #1e1e1e; border-left: 4px solid #00e5ff; padding: 15px 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="margin: 0; color: #00e5ff; font-size: 1.1em;">🎯 Сегодня в фокусе</h3>
+                <a href="/today" style="color: #b0bec5; text-decoration: none; font-size: 0.9em;">Открыть полный план →</a>
+            </div>
+            
+            <div style="display: flex; gap: 15px; margin-bottom: 15px; font-size: 0.9em; color: #888;">
+                <span>Всего задач: <strong style="color: #e0e0e0;">{{ today_summary['total'] }}</strong></span>
+                {% if today_summary['urgent'] > 0 %}
+                <span style="color: #ff5252;">🔥 Срочных: {{ today_summary['urgent'] }}</span>
+                {% endif %}
+                {% if today_summary['overdue'] > 0 %}
+                <span style="color: #ffab40;">⚠️ Просрочено: {{ today_summary['overdue'] }}</span>
+                {% endif %}
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                {% for task in today_summary['top_tasks'] %}
+                <div style="display: flex; align-items: center; gap: 10px; padding: 8px; background-color: #2d2d2d; border-radius: 4px;">
+                    <span style="font-size: 1.2em;">
+                        {% if task['priority'] == 'now' %}🔥
+                        {% else %}⚠️{% endif %}
+                    </span>
+                    <span style="flex-grow: 1; color: #e0e0e0;">{{ task['title'] }}</span>
+                    <form method="POST" action="/complete_task/{{ task['id'] }}" style="margin: 0;">
+                        <input type="hidden" name="from_page" value="home">
+                        <button type="submit" style="background: none; border: 1px solid #4CAF50; color: #4CAF50; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.8em;">✓</button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Остальная навигация -->
+        <div class="archive-link" style="margin-top: 20px; display: flex; gap: 15px; flex-wrap: wrap;">
+            
+            <!-- Умная ссылка на Входящие с анимацией -->
+            <a href="/inbox" 
+               style="text-decoration: none; font-weight: bold; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; transition: all 0.3s;
+                      color: {% if stats.get('inbox_count', 0) > 0 %}#ff5252{% else %}#ffab40{% endif %};
+                      {% if stats.get('inbox_count', 0) > 0 %}animation: pulse-glow 2s infinite; background-color: rgba(255, 82, 82, 0.1);{% endif %}">
+                📥 Входящие 
+                {% if stats.get('inbox_count', 0) > 0 %}
+                    <span style="background-color: #ff5252; color: white; border-radius: 50%; padding: 2px 7px; font-size: 0.85em; font-weight: bold;">{{ stats.get('inbox_count', 0) }}</span>
+                {% else %}
+                    <span style="font-size: 0.9em; opacity: 0.7;">(0)</span>
+                {% endif %}
+            </a>
+
+            <a href="/notes" style="color: #b0bec5; text-decoration: none; font-weight: bold;">📝 Заметки →</a>
+            <a href="/projects" style="color: #69f0ae; text-decoration: none; font-weight: bold;">📁 Проекты →</a>
+            <a href="/seasonal" style="color: #ffd740; text-decoration: none; font-weight: bold;">🍂 Сезонные →</a>
+            <a href="/archive" style="color: #b0bec5; text-decoration: none; font-weight: bold;">📦 Архив →</a>
+        </div>
+
+        <!-- Добавляем стиль для пульсации прямо сюда, если его нет в <head> -->
+        <style>
+            @keyframes pulse-glow {
+                0% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.4); }
+                70% { box-shadow: 0 0 0 8px rgba(255, 82, 82, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0); }
+            }
+        </style>
         
         {% if added %}<div class="success-msg">✅ Задача успешно добавлена!</div>{% endif %}
         
@@ -135,15 +215,15 @@
                 <div class="form-group">
                     <label for="area">Область жизни:</label>
                     <select id="area" name="area" required onchange="updateProjects()">
-                        <option value="Семья и близкие">👨‍‍👧‍👦 Семья и близкие</option>
-                        <option value="Работа и карьера">💼 Работа и карьера</option>
+                        <option value="Личные проекты" selected>🎯 Личные проекты (по умолчанию)</option>
+                        <option value="Семья и близкие">👨‍👩‍👧‍👦 Семья и близкие</option>
+                        <option value="Работа и карьера"> Работа и карьера</option>
                         <option value="Учёба и развитие">📚 Учёба и развитие</option>
                         <option value="Дом и хозяйство">🏠 Дом и хозяйство</option>
                         <option value="Транспорт">🚗 Транспорт</option>
                         <option value="Финансы">💰 Финансы</option>
                         <option value="Здоровье">❤️ Здоровье</option>
                         <option value="Социальное">🏘️ Социальное</option>
-                        <option value="Личные проекты">🎯 Личные проекты</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -165,6 +245,7 @@
                         <label for="repeat">Повторять:</label>
                         <select id="repeat" name="repeat">
                             <option value="none" selected>Не повторять</option>
+                            <option value="daily">Каждый день</option>  <!-- НОВОЕ -->
                             <option value="weekly">Каждую неделю</option>
                             <option value="monthly">Каждый месяц</option>
                             <option value="yearly">Каждый год</option>
@@ -192,6 +273,12 @@
                 <div class="task-title">{{ task['title'] }}</div>
                 <div class="task-meta">
                     📂 {{ task['area'] }} | 📁 {{ task['project'] }} | 🎯 {{ task['priority'] }}
+                    {% if task.get('repeat') and task['repeat'] != 'none' %}
+                        <span style="color: #00e5ff; margin-left: 5px; font-size: 0.85em;" 
+                            title="Повтор: {{ 'Каждый день' if task['repeat'] == 'daily' else 'Каждую неделю' if task['repeat'] == 'weekly' else 'Каждый месяц' if task['repeat'] == 'monthly' else 'Каждый год' }}">
+                            🔄 {{ 'день' if task['repeat'] == 'daily' else 'нед' if task['repeat'] == 'weekly' else 'мес' if task['repeat'] == 'monthly' else 'год' }}
+                        </span>
+                    {% endif %}
                     {% if task['due_date'] %}
                         | 📅 Срок: {{ task['due_date'] }}
                         {% if task['deadline_status'] == 'overdue' %}<span style="color: #ff5252; font-weight: bold; margin-left: 10px;">⚠️ ПРОСРОЧЕНО!</span>
@@ -204,7 +291,7 @@
                     <form method="POST" action="/complete_task/{{ task['id'] }}" style="flex: 1;">
                         <button type="submit" class="complete-btn" style="width: 100%;">✓ Выполнено</button>
                     </form>
-                    <a href="/edit_task/{{ task['id'] }}" style="flex: 1; text-decoration: none;">
+                    <a href="/edit_task/{{ task['id'] }}?from_page=home">
                         <button type="button" style="width: 100%; background-color: #ffab40; color: #121212; padding: 8px 16px; border: none; border-radius: 4px; font-size: 0.9em; cursor: pointer;">✏️ Изменить</button>
                     </a>
                 </div>

@@ -118,8 +118,10 @@
         <h1>📅 Умный план на сегодня</h1>
         
         <!-- Совет от Джарвиса -->
-        <div class="advice-card">
-            <div class="advice-text">{{ plan['advice'] }}</div>
+        <div style="border-left: 4px solid {{ plan.get('advice', {}).get('color', '#00e5ff') }}; background-color: #1e1e1e; padding: 15px 20px; border-radius: 4px; margin-bottom: 20px;">
+            <p style="margin: 0; font-size: 1.05em; color: {{ plan.get('advice', {}).get('color', '#00e5ff') }};">
+                {{ plan.get('advice', {}).get('text', 'Загружай задачи и Джарвис даст совет!') }}
+            </p>
         </div>
         
         <!-- Статистика плана -->
@@ -134,7 +136,7 @@
             </div>
             <div class="stat-box" style="border-top: 3px solid #69f0ae;">
                 <div class="stat-number" style="color: #69f0ae;">{{ plan['family_count'] }}</div>
-                <div class="stat-label">Семья/Мама</div>
+                <div class="stat-label">Семья</div>
             </div>
             <div class="stat-box" style="border-top: 3px solid #78909c;">
                 <div class="stat-number" style="color: #78909c;">{{ plan['other_count'] }}</div>
@@ -143,24 +145,64 @@
         </div>
         
         {% if plan['tasks'] %}
+            <!-- Срочные задачи (приоритет "now") -->
+            {% if plan['urgent_list'] %}
+            <div class="task-section urgent-section">
+                <h2 class="section-title" style="color: #ff5252;">🔥 Срочные (сделать прямо сейчас!)</h2>
+                {% for task in plan['urgent_list'] %}
+                <div class="task-card priority-now">
+                    <div class="task-title">{{ task['title'] }}</div>
+                    <div class="task-meta">
+                        📂 {{ task['area'] }} |  {{ task['project'] }} | 🎯 {{ task['priority'] }}
+                        {% if task['due_date'] %} | 📅 Срок: {{ task['due_date'] }}{% endif %}
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <form method="POST" action="/complete_task/{{ task['id'] }}" style="flex: 1;">
+                            <input type="hidden" name="from_page" value="today">
+                            <button type="submit" style="width: 100%; background-color: #4CAF50; color: white; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                                ✓ Выполнено
+                            </button>
+                        </form>
+                        <form method="POST" action="/toggle_pin/{{ task['id'] }}" style="flex: 1;">
+                            <button type="submit" style="width: 100%; background-color: {{ '#ffd740' if task['pinned'] else '#555' }}; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;" title="{{ 'Открепить' if task['pinned'] else 'Закрепить вверху секции' }}">
+                                📌 {{ 'Открепить' if task['pinned'] else 'Закрепить' }}
+                            </button>
+                        </form>
+                        <a href="/edit_task/{{ task['id'] }}?from_page=today">
+                            <button type="button" style="width: 100%; background-color: #ffab40; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                                ✏️ Изменить
+                            </button>
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            
             <!-- Просроченные -->
             {% if plan['overdue_list'] %}
             <div class="task-section urgent-section">
-                <h2 class="section-title"> Просроченные (сделать в первую очередь!)</h2>
+                <h2 class="section-title" style="color: #ff5252;">⚠️ Просроченные (сделать в первую очередь!)</h2>
                 {% for task in plan['overdue_list'] %}
                 <div class="task-card priority-{{ task['priority'] }}">
                     <div class="task-title">{{ task['title'] }}</div>
                     <div class="task-meta">
                         📂 {{ task['area'] }} | 📁 {{ task['project'] }} | 🎯 {{ task['priority'] }}
-                        {% if task['due_date'] %} |  Срок: {{ task['due_date'] }} {% endif %}
+                        {% if task['due_date'] %} | 📅 Срок: {{ task['due_date'] }}{% endif %}
                     </div>
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
                         <form method="POST" action="/complete_task/{{ task['id'] }}" style="flex: 1;">
+                            <input type="hidden" name="from_page" value="today">
                             <button type="submit" style="width: 100%; background-color: #4CAF50; color: white; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
                                 ✓ Выполнено
                             </button>
                         </form>
-                        <a href="/edit_task/{{ task['id'] }}" style="flex: 1; text-decoration: none;">
+                        <form method="POST" action="/toggle_pin/{{ task['id'] }}" style="flex: 1;">
+                            <button type="submit" style="width: 100%; background-color: {{ '#ffd740' if task['pinned'] else '#555' }}; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;" title="{{ 'Открепить' if task['pinned'] else 'Закрепить вверху секции' }}">
+                                📌 {{ 'Открепить' if task['pinned'] else 'Закрепить' }}
+                            </button>
+                        </form>
+                        <a href="/edit_task/{{ task['id'] }}?from_page=today">
                             <button type="button" style="width: 100%; background-color: #ffab40; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
                                 ✏️ Изменить
                             </button>
@@ -174,21 +216,27 @@
             <!-- Дедлайн сегодня -->
             {% if plan['today_list'] %}
             <div class="task-section deadline-section">
-                <h2 class="section-title">🟠 Дедлайн сегодня</h2>
+                <h2 class="section-title" style="color: #ffab40;">🟠 Дедлайн сегодня</h2>
                 {% for task in plan['today_list'] %}
                 <div class="task-card priority-{{ task['priority'] }}">
                     <div class="task-title">{{ task['title'] }}</div>
                     <div class="task-meta">
-                        📂 {{ task['area'] }} | 📁 {{ task['project'] }} | 🎯 {{ task['priority'] }}
-                        {% if task['due_date'] %} |  Срок: {{ task['due_date'] }} {% endif %}
+                        📂 {{ task['area'] }} |  {{ task['project'] }} | 🎯 {{ task['priority'] }}
+                        {% if task['due_date'] %} | 📅 Срок: {{ task['due_date'] }}{% endif %}
                     </div>
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
                         <form method="POST" action="/complete_task/{{ task['id'] }}" style="flex: 1;">
+                            <input type="hidden" name="from_page" value="today">
                             <button type="submit" style="width: 100%; background-color: #4CAF50; color: white; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
                                 ✓ Выполнено
                             </button>
                         </form>
-                        <a href="/edit_task/{{ task['id'] }}" style="flex: 1; text-decoration: none;">
+                        <form method="POST" action="/toggle_pin/{{ task['id'] }}" style="flex: 1;">
+                            <button type="submit" style="width: 100%; background-color: {{ '#ffd740' if task['pinned'] else '#555' }}; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;" title="{{ 'Открепить' if task['pinned'] else 'Закрепить вверху секции' }}">
+                                📌 {{ 'Открепить' if task['pinned'] else 'Закрепить' }}
+                            </button>
+                        </form>
+                        <a href="/edit_task/{{ task['id'] }}?from_page=today">
                             <button type="button" style="width: 100%; background-color: #ffab40; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
                                 ✏️ Изменить
                             </button>
@@ -202,21 +250,27 @@
             <!-- Учёба/Работа -->
             {% if plan['study_list'] %}
             <div class="task-section study-section">
-                <h2 class="section-title">📚 Инвестиция в будущее (учёба/работа)</h2>
+                <h2 class="section-title" style="color: #00e5ff;">📚 Инвестиция в будущее (учёба/работа)</h2>
                 {% for task in plan['study_list'] %}
                 <div class="task-card priority-{{ task['priority'] }}">
                     <div class="task-title">{{ task['title'] }}</div>
                     <div class="task-meta">
                         📂 {{ task['area'] }} | 📁 {{ task['project'] }} | 🎯 {{ task['priority'] }}
-                        {% if task['due_date'] %} |  Срок: {{ task['due_date'] }} {% endif %}
+                        {% if task['due_date'] %} | 📅 Срок: {{ task['due_date'] }}{% endif %}
                     </div>
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
                         <form method="POST" action="/complete_task/{{ task['id'] }}" style="flex: 1;">
+                            <input type="hidden" name="from_page" value="today">
                             <button type="submit" style="width: 100%; background-color: #4CAF50; color: white; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
                                 ✓ Выполнено
                             </button>
                         </form>
-                        <a href="/edit_task/{{ task['id'] }}" style="flex: 1; text-decoration: none;">
+                        <form method="POST" action="/toggle_pin/{{ task['id'] }}" style="flex: 1;">
+                            <button type="submit" style="width: 100%; background-color: {{ '#ffd740' if task['pinned'] else '#555' }}; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;" title="{{ 'Открепить' if task['pinned'] else 'Закрепить вверху секции' }}">
+                                📌 {{ 'Открепить' if task['pinned'] else 'Закрепить' }}
+                            </button>
+                        </form>
+                        <a href="/edit_task/{{ task['id'] }}?from_page=today">
                             <button type="button" style="width: 100%; background-color: #ffab40; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
                                 ✏️ Изменить
                             </button>
@@ -227,24 +281,30 @@
             </div>
             {% endif %}
             
-            <!-- Семья/Мама -->
+            <!-- Близкие -->
             {% if plan['family_list'] %}
             <div class="task-section family-section">
-                <h2 class="section-title">👨‍👩‍ Близкие (семья/мама/здоровье)</h2>
+                <h2 class="section-title" style="color: #69f0ae;">👨‍👩👧 Близкие</h2>
                 {% for task in plan['family_list'] %}
                 <div class="task-card priority-{{ task['priority'] }}">
                     <div class="task-title">{{ task['title'] }}</div>
                     <div class="task-meta">
                         📂 {{ task['area'] }} | 📁 {{ task['project'] }} | 🎯 {{ task['priority'] }}
-                        {% if task['due_date'] %} |  Срок: {{ task['due_date'] }} {% endif %}
+                        {% if task['due_date'] %} | 📅 Срок: {{ task['due_date'] }}{% endif %}
                     </div>
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
                         <form method="POST" action="/complete_task/{{ task['id'] }}" style="flex: 1;">
+                            <input type="hidden" name="from_page" value="today">
                             <button type="submit" style="width: 100%; background-color: #4CAF50; color: white; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
                                 ✓ Выполнено
                             </button>
                         </form>
-                        <a href="/edit_task/{{ task['id'] }}" style="flex: 1; text-decoration: none;">
+                        <form method="POST" action="/toggle_pin/{{ task['id'] }}" style="flex: 1;">
+                            <button type="submit" style="width: 100%; background-color: {{ '#ffd740' if task['pinned'] else '#555' }}; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;" title="{{ 'Открепить' if task['pinned'] else 'Закрепить вверху секции' }}">
+                                📌 {{ 'Открепить' if task['pinned'] else 'Закрепить' }}
+                            </button>
+                        </form>
+                        <a href="/edit_task/{{ task['id'] }}?from_page=today">
                             <button type="button" style="width: 100%; background-color: #ffab40; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
                                 ✏️ Изменить
                             </button>
@@ -258,21 +318,27 @@
             <!-- Остальное -->
             {% if plan['other_list'] %}
             <div class="task-section other-section">
-                <h2 class="section-title">⚪ Остальное (если успеешь)</h2>
+                <h2 class="section-title" style="color: #b0bec5;">⚪ Остальное (если успеешь)</h2>
                 {% for task in plan['other_list'] %}
                 <div class="task-card priority-{{ task['priority'] }}">
                     <div class="task-title">{{ task['title'] }}</div>
                     <div class="task-meta">
-                        📂 {{ task['area'] }} | 📁 {{ task['project'] }} | 🎯 {{ task['priority'] }}
-                        {% if task['due_date'] %} |  Срок: {{ task['due_date'] }} {% endif %}
+                        📂 {{ task['area'] }} | 📁 {{ task['project'] }} |  {{ task['priority'] }}
+                        {% if task['due_date'] %} | 📅 Срок: {{ task['due_date'] }}{% endif %}
                     </div>
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
                         <form method="POST" action="/complete_task/{{ task['id'] }}" style="flex: 1;">
+                            <input type="hidden" name="from_page" value="today">
                             <button type="submit" style="width: 100%; background-color: #4CAF50; color: white; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
                                 ✓ Выполнено
                             </button>
                         </form>
-                        <a href="/edit_task/{{ task['id'] }}" style="flex: 1; text-decoration: none;">
+                        <form method="POST" action="/toggle_pin/{{ task['id'] }}" style="flex: 1;">
+                            <button type="submit" style="width: 100%; background-color: {{ '#ffd740' if task['pinned'] else '#555' }}; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;" title="{{ 'Открепить' if task['pinned'] else 'Закрепить вверху секции' }}">
+                                📌 {{ 'Открепить' if task['pinned'] else 'Закрепить' }}
+                            </button>
+                        </form>
+                        <a href="/edit_task/{{ task['id'] }}?from_page=today">
                             <button type="button" style="width: 100%; background-color: #ffab40; color: #121212; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
                                 ✏️ Изменить
                             </button>

@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сезонные напоминания — Джарвис</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { color: #00e5ff; text-align: center; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: #00e5ff; text-decoration: none; font-size: 1.1em; }
+        .back-link:hover { text-decoration: underline; }
+        
+        .form-card { background-color: #1e1e1e; padding: 20px; border-radius: 8px; margin-bottom: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; color: #b0bec5; font-weight: bold; }
+        input[type="text"], input[type="number"], select { width: 100%; padding: 10px; background-color: #2d2d2d; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; font-size: 1em; box-sizing: border-box; }
+        input:focus, select:focus { outline: none; border-color: #00e5ff; }
+        .submit-btn { background-color: #00e5ff; color: #121212; padding: 12px; border: none; border-radius: 4px; font-size: 1em; font-weight: bold; cursor: pointer; width: 100%; }
+        .submit-btn:hover { background-color: #00b8d4; }
+
+        .reminder-item { 
+            background-color: #1e1e1e; 
+            padding: 15px; 
+            margin-bottom: 10px; 
+            border-radius: 4px; 
+            border-left: 4px solid #ffd740;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .reminder-item.inactive { 
+            opacity: 0.5; 
+            border-left-color: #666; 
+        }
+        .reminder-info { flex-grow: 1; }
+        .reminder-title { font-size: 1.1em; font-weight: bold; margin-bottom: 5px; }
+        .reminder-meta { font-size: 0.9em; color: #888; }
+        .reminder-actions { display: flex; gap: 10px; }
+        .btn { padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; text-decoration: none; display: inline-block; }
+        .btn-edit { background-color: #00e5ff; color: #121212; }
+        .btn-edit:hover { background-color: #00b8d4; }
+        .btn-toggle { background-color: #69f0ae; color: #121212; }
+        .btn-toggle:hover { background-color: #4caf50; }
+        .btn-delete { background-color: #ff5252; color: white; }
+        .btn-delete:hover { background-color: #ff1744; }
+        
+        .month-select { display: flex; gap: 10px; }
+        .month-select > div { flex: 1; }
+        
+        h2, h3 { color: #b0bec5; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        h3 { margin-top: 30px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← На главную</a>
+        <h1> Сезонные напоминания</h1>
+        
+        <!-- Форма добавления месячных напоминаний -->
+        <div class="form-card">
+            <h2 style="color: #b0bec5; margin-top: 0;">➕ Добавить напоминание (по месяцам)</h2>
+            <form method="POST" action="/add_seasonal_reminder">
+                <div class="form-group">
+                    <label for="title">Название:</label>
+                    <input type="text" id="title" name="title" required placeholder="Например: Замена стеклоочистителя на зиму">
+                </div>
+                
+                <div style="display: flex; gap: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="area">Область:</label>
+                        <select id="area" name="area" required onchange="updateProjects()">
+                            {% for area in areas %}
+                            <option value="{{ area }}">{{ area }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="project">Проект:</label>
+                        <select id="project" name="project" required></select>
+                    </div>
+                </div>
+                
+                <div class="month-select">
+                    <div class="form-group">
+                        <label for="month_start">Месяц начала:</label>
+                        <select id="month_start" name="month_start" required>
+                            {% for i in range(1, 13) %}
+                            <option value="{{ i }}">{{ i }} - {{ ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][i-1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="month_end">Месяц окончания:</label>
+                        <select id="month_end" name="month_end" required>
+                            {% for i in range(1, 13) %}
+                            <option value="{{ i }}">{{ i }} - {{ ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][i-1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="priority">Приоритет при создании задачи:</label>
+                    <select id="priority" name="priority">
+                        <option value="now">🔥 Сейчас (срочно)</option>
+                        <option value="later" selected>⏳ Позже</option>
+                        <option value="future">🗓️ На перспективу</option>
+                    </select>
+                </div>
+                
+                <button type="submit" class="submit-btn">Добавить напоминание</button>
+            </form>
+        </div>
+
+        <!-- Список месячных напоминаний -->
+        <h2>📋 Твои напоминания (по месяцам)</h2>
+        
+        {% if reminders %}
+            {% for reminder in reminders %}
+            <div class="reminder-item {{ 'inactive' if not reminder['is_active'] }}">
+                <div class="reminder-info">
+                    <div class="reminder-title">{{ reminder['title'] }}</div>
+                    <div class="reminder-meta">
+                        📂 {{ reminder['area'] }} |  {{ reminder['project'] }} | 
+                         {{ reminder['month_start'] }}-{{ reminder['month_end'] }} мес. | 
+                        🎯 {{ reminder['priority'] }}
+                        {% if not reminder['is_active'] %}<span style="color: #ff5252;"> (выключено)</span>{% endif %}
+                    </div>
+                </div>
+                <div class="reminder-actions">
+                    <button type="button" class="btn btn-edit" onclick="showEditForm({{ reminder['id'] }}, '{{ reminder['title'] }}', '{{ reminder['area'] }}', '{{ reminder['project'] }}', {{ reminder['month_start'] }}, {{ reminder['month_end'] }}, '{{ reminder['priority'] }}')">✏️ Редактировать</button>
+                    <form method="POST" action="/toggle_seasonal_reminder/{{ reminder['id'] }}" style="display: inline;">
+                        <button type="submit" class="btn btn-toggle">{{ '▶️ Включить' if not reminder['is_active'] else '⏸️ Выключить' }}</button>
+                    </form>
+                    <form method="POST" action="/delete_seasonal_reminder/{{ reminder['id'] }}" style="display: inline;">
+                        <button type="submit" class="btn btn-delete" onclick="return confirm('Удалить напоминание?');">🗑️ Удалить</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p style="text-align: center; color: #69f0ae;">Сезонных напоминаний пока нет. Добавь первое!</p>
+        {% endif %}
+
+        <!-- Форма редактирования месячного напоминания (скрыта по умолчанию) -->
+        <div id="editForm" class="form-card" style="border-left: 4px solid #ffab40; display: none;">
+            <h3 style="color: #ffab40; margin-top: 0;">✏️ Редактировать напоминание</h3>
+            <form method="POST" action="/edit_seasonal_reminder/0" id="editFormActual">
+                <div class="form-group">
+                    <label for="edit_title">Название:</label>
+                    <input type="text" id="edit_title" name="title" required>
+                </div>
+                
+                <div style="display: flex; gap: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="edit_area">Область:</label>
+                        <select id="edit_area" name="area" required onchange="updateProjectsEditSeasonal()">
+                            {% for area in areas %}
+                            <option value="{{ area }}">{{ area }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="edit_project">Проект:</label>
+                        <select id="edit_project" name="project" required></select>
+                    </div>
+                </div>
+                
+                <div class="month-select">
+                    <div class="form-group">
+                        <label for="edit_month_start">Месяц начала:</label>
+                        <select id="edit_month_start" name="month_start" required>
+                            {% for i in range(1, 13) %}
+                            <option value="{{ i }}">{{ i }} - {{ ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][i-1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_month_end">Месяц окончания:</label>
+                        <select id="edit_month_end" name="month_end" required>
+                            {% for i in range(1, 13) %}
+                            <option value="{{ i }}">{{ i }} - {{ ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][i-1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit_priority">Приоритет:</label>
+                    <select id="edit_priority" name="priority">
+                        <option value="now">🔥 Сейчас (срочно)</option>
+                        <option value="later"> Позже</option>
+                        <option value="future">🗓️ На перспективу</option>
+                    </select>
+                </div>
+                
+                <div style="display: flex; gap: 10px;">
+                    <button type="submit" class="submit-btn" style="background-color: #ffab40; flex: 1;">💾 Сохранить изменения</button>
+                    <button type="button" class="submit-btn" style="background-color: #444; flex: 1;" onclick="hideEditForm()">Отмена</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Форма добавления температурных напоминаний -->
+        <div class="form-card" style="border-left: 4px solid #00e5ff;">
+            <h3 style="color: #00e5ff; margin-top: 0;">🌡️ Добавить температурное напоминание</h3>
+            <form method="POST" action="/add_temperature_reminder">
+                <div class="form-group">
+                    <label for="temp_title">Название:</label>
+                    <input type="text" id="temp_title" name="title" required placeholder="Например: Замена шин на зимние">
+                </div>
+                
+                <div style="display: flex; gap: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="temp_area">Область:</label>
+                        <select id="temp_area" name="area" required onchange="updateProjectsTemp()">
+                            {% for area in areas %}
+                            <option value="{{ area }}">{{ area }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="temp_project">Проект:</label>
+                        <select id="temp_project" name="project" required></select>
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="operator">Условие:</label>
+                        <select id="operator" name="operator" required>
+                            <option value="below">Температура опустится ниже</option>
+                            <option value="above">Температура поднимется выше</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="temperature">Значение (°C):</label>
+                        <input type="number" id="temperature" name="temperature" step="0.1" required placeholder="7">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="temp_priority">Приоритет:</label>
+                    <select id="temp_priority" name="priority">
+                        <option value="now">🔥 Сейчас (срочно)</option>
+                        <option value="later" selected>⏳ Позже</option>
+                        <option value="future">🗓️ На перспективу</option>
+                    </select>
+                </div>
+                
+                <button type="submit" class="submit-btn" style="background-color: #00e5ff;">Добавить температурное напоминание</button>
+            </form>
+        </div>
+
+        <!-- Список температурных напоминаний -->
+        <h3>📋 Твои температурные напоминания</h3>
+        
+        {% if temp_reminders %}
+            {% for reminder in temp_reminders %}
+            <div class="reminder-item {{ 'inactive' if not reminder['is_active'] }}" style="border-left-color: #00e5ff;">
+                <div class="reminder-info">
+                    <div class="reminder-title">{{ reminder['title'] }}</div>
+                    <div class="reminder-meta">
+                        📂 {{ reminder['area'] }} | 📁 {{ reminder['project'] }} | 
+                        🌡️ {{ 'ниже' if reminder['operator'] == 'below' else 'выше' }} {{ reminder['temperature'] }}°C | 
+                        🎯 {{ reminder['priority'] }}
+                        {% if not reminder['is_active'] %}<span style="color: #ff5252;"> (выключено)</span>{% endif %}
+                    </div>
+                </div>
+                <div class="reminder-actions">
+                    <button type="button" class="btn btn-edit" onclick="showEditTempForm({{ reminder['id'] }}, '{{ reminder['title'] }}', '{{ reminder['area'] }}', '{{ reminder['project'] }}', '{{ reminder['operator'] }}', {{ reminder['temperature'] }}, '{{ reminder['priority'] }}')">✏️ Редактировать</button>
+                    <form method="POST" action="/toggle_temperature_reminder/{{ reminder['id'] }}" style="display: inline;">
+                        <button type="submit" class="btn btn-toggle">{{ '▶️ Включить' if not reminder['is_active'] else '⏸️ Выключить' }}</button>
+                    </form>
+                    <form method="POST" action="/delete_temperature_reminder/{{ reminder['id'] }}" style="display: inline;">
+                        <button type="submit" class="btn btn-delete" onclick="return confirm('Удалить напоминание?');">🗑️ Удалить</button>
+                    </form>
+                </div>
+                <!-- Форма редактирования температурного напоминания (скрыта по умолчанию) -->
+                <div id="editTempForm" class="form-card" style="border-left: 4px solid #ffab40; display: none;">
+                    <h3 style="color: #ffab40; margin-top: 0;">✏️ Редактировать температурное напоминание</h3>
+                    <form method="POST" action="/edit_temperature_reminder/0" id="editTempFormActual">
+                        <input type="hidden" name="reminder_id" id="edit_reminder_id">
+                        
+                        <div class="form-group">
+                            <label for="edit_temp_title">Название:</label>
+                            <input type="text" id="edit_temp_title" name="title" required>
+                        </div>
+                        
+                        <div style="display: flex; gap: 15px;">
+                            <div class="form-group" style="flex: 1;">
+                                <label for="edit_temp_area">Область:</label>
+                                <select id="edit_temp_area" name="area" required onchange="updateProjectsEdit()">
+                                    {% for area in areas %}
+                                    <option value="{{ area }}">{{ area }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="edit_temp_project">Проект:</label>
+                                <select id="edit_temp_project" name="project" required></select>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 15px;">
+                            <div class="form-group" style="flex: 1;">
+                                <label for="edit_operator">Условие:</label>
+                                <select id="edit_operator" name="operator" required>
+                                    <option value="below">Температура опустится ниже</option>
+                                    <option value="above">Температура поднимется выше</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="edit_temperature">Значение (°C):</label>
+                                <input type="number" id="edit_temperature" name="temperature" step="0.1" required>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="edit_temp_priority">Приоритет:</label>
+                            <select id="edit_temp_priority" name="priority">
+                                <option value="now">🔥 Сейчас (срочно)</option>
+                                <option value="later"> Позже</option>
+                                <option value="future">🗓️ На перспективу</option>
+                            </select>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px;">
+                            <button type="submit" class="submit-btn" style="background-color: #ffab40; flex: 1;">💾 Сохранить изменения</button>
+                            <button type="button" class="submit-btn" style="background-color: #444; flex: 1;" onclick="hideEditTempForm()">Отмена</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p style="text-align: center; color: #69f0ae;">Температурных напоминаний пока нет.</p>
+        {% endif %}
+    </div>
+
+    <script>
+        const projectsByArea = {{ projects_by_area | tojson | safe }};
+        
+        // Для месячных напоминаний
+        function updateProjects() {
+            const areaSelect = document.getElementById('area');
+            const projectSelect = document.getElementById('project');
+            const projects = projectsByArea[areaSelect.value] || ['Без проекта'];
+            projectSelect.innerHTML = '';
+            projects.forEach(proj => {
+                const option = document.createElement('option');
+                option.value = proj;
+                option.textContent = proj;
+                projectSelect.appendChild(option);
+            });
+        }
+        
+        // Для температурных напоминаний
+        function updateProjectsTemp() {
+            const areaSelect = document.getElementById('temp_area');
+            const projectSelect = document.getElementById('temp_project');
+            const projects = projectsByArea[areaSelect.value] || ['Без проекта'];
+            projectSelect.innerHTML = '';
+            projects.forEach(proj => {
+                const option = document.createElement('option');
+                option.value = proj;
+                option.textContent = proj;
+                projectSelect.appendChild(option);
+            });
+        }
+        
+        // Инициализация при загрузке
+        updateProjects();
+        updateProjectsTemp();
+
+        // Для температурных напоминаний (добавление)
+        function updateProjectsTemp() {
+            const areaSelect = document.getElementById('temp_area');
+            const projectSelect = document.getElementById('temp_project');
+            const projects = projectsByArea[areaSelect.value] || ['Без проекта'];
+            projectSelect.innerHTML = '';
+            projects.forEach(proj => {
+                const option = document.createElement('option');
+                option.value = proj;
+                option.textContent = proj;
+                projectSelect.appendChild(option);
+            });
+        }
+        
+        // Для редактирования температурных напоминаний
+        function updateProjectsEdit() {
+            const areaSelect = document.getElementById('edit_temp_area');
+            const projectSelect = document.getElementById('edit_temp_project');
+            const projects = projectsByArea[areaSelect.value] || ['Без проекта'];
+            projectSelect.innerHTML = '';
+            projects.forEach(proj => {
+                const option = document.createElement('option');
+                option.value = proj;
+                option.textContent = proj;
+                projectSelect.appendChild(option);
+            });
+        }
+        
+        // Показать форму редактирования
+        function showEditTempForm(id, title, area, project, operator, temperature, priority) {
+            document.getElementById('edit_reminder_id').value = id;
+            document.getElementById('edit_temp_title').value = title;
+            document.getElementById('edit_temp_area').value = area;
+            updateProjectsEdit();
+            document.getElementById('edit_temp_project').value = project;
+            document.getElementById('edit_operator').value = operator;
+            document.getElementById('edit_temperature').value = temperature;
+            document.getElementById('edit_temp_priority').value = priority;
+            
+            // Обновляем action формы
+            document.getElementById('editTempFormActual').action = '/edit_temperature_reminder/' + id;
+            
+            // Показываем форму
+            document.getElementById('editTempForm').style.display = 'block';
+            // Скроллим к форме
+            document.getElementById('editTempForm').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // Скрыть форму редактирования
+        function hideEditTempForm() {
+            document.getElementById('editTempForm').style.display = 'none';
+        }
+        
+        // Инициализация при загрузке
+        updateProjects();
+        updateProjectsTemp();
+
+        // Для редактирования месячных напоминаний
+        function updateProjectsEditSeasonal() {
+            const areaSelect = document.getElementById('edit_area');
+            const projectSelect = document.getElementById('edit_project');
+            const projects = projectsByArea[areaSelect.value] || ['Без проекта'];
+            projectSelect.innerHTML = '';
+            projects.forEach(proj => {
+                const option = document.createElement('option');
+                option.value = proj;
+                option.textContent = proj;
+                projectSelect.appendChild(option);
+            });
+        }
+        
+        // Показать форму редактирования месячного напоминания
+        function showEditForm(id, title, area, project, monthStart, monthEnd, priority) {
+            document.getElementById('edit_title').value = title;
+            document.getElementById('edit_area').value = area;
+            updateProjectsEditSeasonal();
+            document.getElementById('edit_project').value = project;
+            document.getElementById('edit_month_start').value = monthStart;
+            document.getElementById('edit_month_end').value = monthEnd;
+            document.getElementById('edit_priority').value = priority;
+            
+            // Обновляем action формы
+            document.getElementById('editFormActual').action = '/edit_seasonal_reminder/' + id;
+            
+            // Показываем форму
+            document.getElementById('editForm').style.display = 'block';
+            // Скроллим к форме
+            document.getElementById('editForm').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // Скрыть форму редактирования
+        function hideEditForm() {
+            document.getElementById('editForm').style.display = 'none';
+        }
+        
+    </script>
+</body>
+</html>

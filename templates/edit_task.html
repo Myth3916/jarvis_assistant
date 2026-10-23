@@ -32,9 +32,10 @@
         
         <div class="form-card">
             <form method="POST" action="/edit_task/{{ task['id'] }}">
+                <input type="hidden" name="from_page" value="{{ from_page }}">
                 <div class="form-group">
                     <label for="title">Что нужно сделать?</label>
-                    <input type="text" id="title" name="title" required value="{{ task['title'] }}">
+                    <input type="text" id="title" name="title" value="{{ task['title'] }}" required>
                 </div>
                 
                 <div class="form-group">
@@ -72,6 +73,16 @@
                     <input type="date" id="due_date" name="due_date" value="{{ task['due_date'] or '' }}">
                 </div>
                 
+                <div class="form-group">
+                    <label for="repeat">Повторять:</label>
+                    <select id="repeat" name="repeat" required>
+                        <option value="none" {{ 'selected' if task['repeat'] == 'none' }}>Не повторять</option>
+                        <option value="daily" {{ 'selected' if task['repeat'] == 'daily' }}>Каждый день</option>
+                        <option value="weekly" {{ 'selected' if task['repeat'] == 'weekly' }}>Каждую неделю</option>
+                        <option value="monthly" {{ 'selected' if task['repeat'] == 'monthly' }}>Каждый месяц</option>
+                        <option value="yearly" {{ 'selected' if task['repeat'] == 'yearly' }}>Каждый год</option>
+                    </select>
+                </div>
                 <div class="btn-row">
                     <button type="submit" class="btn-save">💾 Сохранить</button>
                     <a href="/" class="btn-cancel">Отмена</a>

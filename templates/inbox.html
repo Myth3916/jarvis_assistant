@@ -81,38 +81,34 @@
         
         {% if tasks %}
             {% for task in tasks %}
-            <div class="task-card">
+            <div class="task-card" style="border-left: 4px solid {% if task.get('project_weight', 5) >= 8 %}#ff5252{% elif task.get('project_weight', 5) <= 3 %}#888{% else %}#00e5ff{% endif %};">
                 <div class="task-title">{{ task['title'] }}</div>
                 <div class="task-meta">
-                     {{ task['area'] }} | 📁 {{ task['project'] }} | Добавлено: {{ task['created_at'][:10] }}
+                    📂 {{ task['area'] }} | 📁 {{ task['project'] }} | 
+                    ⭐ Вес: <strong style="color: {% if task.get('project_weight', 5) >= 8 %}#ff5252{% elif task.get('project_weight', 5) <= 3 %}#888{% else %}#00e5ff{% endif %}">{{ task.get('project_weight', 5) }}/10</strong>
+                    <span style="color: #666; font-size: 0.85em; margin-left: 10px;">Добавлено: {{ task['created_at'][:10] }}</span>
                 </div>
                 
-                <div class="suggestion-box">
-                    <div class="suggestion-label"> Джарвис предлагает:</div>
-                    <div class="suggested-priority">
-                        {% if task['suggested_priority'] == 'now' %}
-                            🔥 Сейчас (срочно)
-                        {% elif task['suggested_priority'] == 'later' %}
-                            ⏳ Позже (на неделе/месяце)
-                        {% elif task['suggested_priority'] == 'future' %}
-                            🗓️ На перспективу
-                        {% else %}
-                            📥 Оставить во входящих
-                        {% endif %}
-                    </div>
-                </div>
-                
-                <div class="btn-row">
-                    <form method="POST" action="/set_priority/{{ task['id'] }}" style="flex: 1;">
-                        <input type="hidden" name="priority" value="{{ 'later' if task['suggested_priority'] == 'inbox' else task['suggested_priority'] }}">
-                        <button type="submit" class="btn-accept">✓ Согласен</button>
+                <!-- Кнопки действий -->
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <form method="POST" action="/set_priority/{{ task['id'] }}" style="display: flex; gap: 5px; flex-wrap: wrap;">
+                        <input type="hidden" name="priority" value="now">
+                        <button type="submit" class="btn-priority" style="background-color: #ff5252;">🔥 Срочно</button>
                     </form>
-                    <a href="/edit_task/{{ task['id'] }}" style="flex: 1; text-decoration: none;">
-                        <button type="button" class="btn-edit">✏️ Редактировать</button>
-                    </a>
+                    <form method="POST" action="/set_priority/{{ task['id'] }}" style="display: flex; gap: 5px;">
+                        <input type="hidden" name="priority" value="later">
+                        <button type="submit" class="btn-priority" style="background-color: #ffab40;">⏳ Позже</button>
+                    </form>
+                    <form method="POST" action="/set_priority/{{ task['id'] }}" style="display: flex; gap: 5px;">
+                        <input type="hidden" name="priority" value="future">
+                        <button type="submit" class="btn-priority" style="background-color: #69f0ae;">🗓️ На потом</button>
+                    </form>
+                    <form method="POST" action="/delete_task/{{ task['id'] }}" style="display: flex; gap: 5px;">
+                        <button type="submit" class="btn-priority" style="background-color: #ff5252;" onclick="return confirm('Удалить задачу?');">️ Удалить</button>
+                    </form>
                 </div>
             </div>
-            {% endfor %}
+            {% endfor %}}
         {% else %}
             <div class="empty-state">
                 🎉 Входящих нет! Все задачи распределены.

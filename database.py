@@ -1,4 +1,5 @@
 import sqlite3
+import requests
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -58,7 +59,7 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Добавляем колонку repeat (повторение)
+    # Таблица Задач
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,26 +68,13 @@ def init_db():
             project TEXT DEFAULT 'Без проекта',
             priority TEXT NOT NULL,
             due_date TEXT,
-            repeat TEXT DEFAULT 'none',  -- НОВОЕ: 'none', 'weekly', 'monthly', 'yearly'
+            repeat TEXT DEFAULT 'none',
+            pinned INTEGER DEFAULT 0,
             status TEXT DEFAULT 'active',
             created_at TEXT NOT NULL
         )
     ''')
-
-    # Таблица задач
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            area TEXT DEFAULT 'Личные проекты',
-            project TEXT DEFAULT 'Без проекта',
-            priority TEXT NOT NULL,
-            due_date TEXT,
-            status TEXT DEFAULT 'active',
-            created_at TEXT NOT NULL
-        )
-    ''')
-    
+       
     # Таблица заметок
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS notes (
@@ -99,14 +87,49 @@ def init_db():
         )
     ''')
     
-    # Таблица проектов (НОВОЕ!)
+    # Таблица проектов (объединённая и с strategic_weight)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS projects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             area TEXT NOT NULL,
             name TEXT NOT NULL,
+            strategic_weight INTEGER DEFAULT 5,
             is_archived INTEGER DEFAULT 0,
             UNIQUE(area, name)
+        )
+    ''')
+    
+    # Миграция: добавляем колонку strategic_weight, если её ещё нет в старой базе
+    try:
+        cursor.execute("ALTER TABLE projects ADD COLUMN strategic_weight INTEGER DEFAULT 5")
+    except sqlite3.OperationalError:
+        pass  # Колонка уже существует, всё ок
+
+    # Таблица сезонных напоминаний
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS seasonal_reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            area TEXT NOT NULL,
+            project TEXT NOT NULL,
+            month_start INTEGER NOT NULL,
+            month_end INTEGER NOT NULL,
+            priority TEXT DEFAULT 'later',
+            is_active INTEGER DEFAULT 1
+        )
+    ''')
+
+    # Таблица температурных напоминаний
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS temperature_reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            area TEXT NOT NULL,
+            project TEXT NOT NULL,
+            operator TEXT NOT NULL,
+            temperature REAL NOT NULL,
+            priority TEXT DEFAULT 'later',
+            is_active INTEGER DEFAULT 1
         )
     ''')
     
@@ -215,11 +238,13 @@ def get_task_by_id(task_id: int):
     conn.close()
     return dict(task) if task else None
 
-def update_task(task_id: int, title: str, area: str, project: str, priority: str, due_date: str = None):
+def update_task(task_id: int, title: str, area: str, project: str, priority: str, due_date: str = None, repeat: str = "none"):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE tasks SET title = ?, area = ?, project = ?, priority = ?, due_date = ? WHERE id = ?", 
-                   (title, area, project, priority, due_date, task_id))
+    cursor.execute(
+        "UPDATE tasks SET title = ?, area = ?, project = ?, priority = ?, due_date = ?, repeat = ? WHERE id = ?", 
+        (title, area, project, priority, due_date, repeat, task_id)
+    )
     conn.commit()
     conn.close()
 
@@ -249,9 +274,21 @@ def suggest_priority(title: str, area: str) -> str:
     return 'inbox'
 
 def get_inbox_tasks():
+    """Получает входящие задачи, отсортированные по стратегическому весу проекта."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tasks WHERE status = 'active' AND priority = 'inbox' ORDER BY created_at DESC")
+    
+    # Используем JOIN с таблицей projects для получения strategic_weight
+    cursor.execute('''
+        SELECT t.*, COALESCE(p.strategic_weight, 5) as project_weight
+        FROM tasks t
+        LEFT JOIN projects p ON t.area = p.area AND t.project = p.name
+        WHERE t.status = 'active' AND t.priority = 'inbox'
+        ORDER BY 
+            project_weight DESC,  -- Сначала задачи из важных проектов
+            t.created_at DESC     -- Потом по дате создания
+    ''')
+    
     tasks = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return tasks
@@ -264,120 +301,95 @@ def set_task_priority(task_id: int, priority: str):
     conn.close()
 
 def get_today_plan():
-    """Умный планировщик: собирает сбалансированный план на день."""
+    """Возвращает сбалансированный план на сегодня с умной сортировкой."""
     conn = get_connection()
     cursor = conn.cursor()
     today = datetime.now().strftime("%Y-%m-%d")
     
-    cursor.execute("SELECT * FROM tasks WHERE status = 'active' ORDER BY due_date ASC")
+    cursor.execute('''
+        SELECT * FROM tasks 
+        WHERE status = 'active'
+        ORDER BY 
+            pinned DESC,
+            CASE priority 
+                WHEN 'now' THEN 1 
+                WHEN 'later' THEN 2 
+                WHEN 'future' THEN 3 
+                ELSE 4 
+            END,
+            CASE 
+                WHEN due_date < ? THEN 1
+                WHEN due_date = ? THEN 2
+                ELSE 3
+            END,
+            due_date ASC,
+            title ASC
+    ''', (today, today))
+    
     all_tasks = [dict(row) for row in cursor.fetchall()]
     conn.close()
     
-    overdue, today_deadline, study, family, other = [], [], [], [], []
-    family_contexts = {'Семья и близкие', 'Здоровье'}
-    study_contexts = {'Учёба и развитие', 'Работа и карьера'}
+    urgent = [t for t in all_tasks if t['priority'] == 'now']
+    overdue = [t for t in all_tasks if t.get('due_date') and t['due_date'] < today and t['priority'] != 'now']
+    today_deadline = [t for t in all_tasks if t.get('due_date') == today and t['priority'] != 'now']
+    study_work = [t for t in all_tasks if t['area'] in ['Работа и карьера', 'Учёба и развитие'] and t['priority'] != 'now' and (not t.get('due_date') or t['due_date'] >= today)]
+    family = [t for t in all_tasks if t['area'] == 'Семья и близкие' and t['priority'] != 'now' and (not t.get('due_date') or t['due_date'] >= today)]
+    other = [t for t in all_tasks if t['area'] not in ['Работа и карьера', 'Учёба и развитие', 'Семья и близкие'] and t['priority'] != 'now' and (not t.get('due_date') or t['due_date'] >= today)]
     
-    for task in all_tasks:
-        due = task.get('due_date')
-        area = task.get('area', '')
-        if due and due < today: overdue.append(task)
-        elif due and due == today: today_deadline.append(task)
-        elif area in study_contexts: study.append(task)
-        elif area in family_contexts: family.append(task)
-        else: other.append(task)
+    total_tasks = len(all_tasks)
+    urgent_count = len(urgent)
+    overdue_count = len(overdue)
     
-    plan_tasks, used_ids = [], set()
-    def add_task(task):
-        if task['id'] not in used_ids:
-            plan_tasks.append(task)
-            used_ids.add(task['id'])
-            return True
-        return False
-    
-    for task in overdue: add_task(task)
-    for task in today_deadline: add_task(task)
-    if study: add_task(study[0])
-    if family: add_task(family[0])
-    for task in other:
-        if len(plan_tasks) >= 6: break
-        add_task(task)
-    for task in study + family:
-        if len(plan_tasks) >= 6: break
-        add_task(task)
-    
-    overdue_list, today_list, study_list, family_list, other_list = [], [], [], [], []
-    for task in plan_tasks:
-        due = task.get('due_date')
-        area = task.get('area', '')
-        if due and due < today: overdue_list.append(task)
-        elif due and due == today: today_list.append(task)
-        elif area in study_contexts: study_list.append(task)
-        elif area in family_contexts: family_list.append(task)
-        else: other_list.append(task)
-        
-    total = len(plan_tasks)
-    if total == 0: advice = "На сегодня задач нет. Отличный день для отдыха!"
-    elif total <= 3: advice = "Лёгкий день. Спокойно справишься со всем."
-    elif total <= 6: advice = "Сбалансированный день. Начни с просроченных и срочных."
-    else: advice = f"⚠️ Насыщенный день ({total} задач). Сфокусируйся на главном."
+    if total_tasks == 0:
+        advice = {'text': '🎉 Сегодня свободный день! Отличное время для отдыха, творчества или стратегического планирования.', 'color': '#69f0ae'}
+    elif urgent_count >= 5 or overdue_count >= 3:
+        advice = {'text': '🔥 День серьёзно загружен! Сфокусируйся на срочном и просроченном. Не пытайся сделать всё — выбирай главное.', 'color': '#ff5252'}
+    elif total_tasks >= 8:
+        advice = {'text': '⚡ Много задач на сегодня. Начни с самого важного, остальное — по остаточному принципу. Ты справишься!', 'color': '#ffab40'}
+    elif total_tasks >= 4:
+        advice = {'text': '✅ Сбалансированный день. Начни с просроченных и срочных, потом переходи к остальному.', 'color': '#00e5ff'}
+    else:
+        advice = {'text': '🌟 Лёгкий день! Можно не только выполнить задачи, но и сделать что-то для будущего (учёба, планирование).', 'color': '#b0bec5'}
     
     return {
-        'tasks': plan_tasks, 'urgent_count': len(overdue_list) + len(today_list),
-        'study_count': len(study_list), 'family_count': len(family_list), 'other_count': len(other_list),
-        'total_count': total, 'advice': advice, 'overdue_list': overdue_list, 'today_list': today_list,
-        'study_list': study_list, 'family_list': family_list, 'other_list': other_list
+        'tasks': all_tasks,
+        'urgent_list': urgent,
+        'overdue_list': overdue,
+        'today_list': today_deadline,
+        'study_list': study_work,
+        'family_list': family,
+        'other_list': other,
+        'advice': advice,
+        'stats': {
+            'urgent_count': len(urgent),
+            'overdue_count': len(overdue),
+            'today_count': len(today_deadline),
+            'study_count': len(study_work),
+            'family_count': len(family),
+            'other_count': len(other),
+            'total': total_tasks
+        }
     }
 
 def get_seasonal_hints():
-    """Возвращает умные подсказки в зависимости от текущего месяца."""
-    current_month = datetime.now().month
-    
-    hints = []
-    
-    # Весна (Март, Апрель, Май)
-    if current_month in [3, 4, 5]:
-        hints.append({"area": "Дом и хозяйство", "project": "Виноградник", "title": "Обработка виноградника от болезней и открытие"})
-        hints.append({"area": "Транспорт", "project": "Текущее обслуживание", "title": "Замена шин на летние и проверка кондиционера"})
-        hints.append({"area": "Здоровье", "project": "Питание и Пост", "title": "Великий пост (проверьте постное меню)"})
-    
-    # Лето (Июнь, Июль, Август)
-    elif current_month in [6, 7, 8]:
-        hints.append({"area": "Дом и хозяйство", "project": "Виноградник", "title": "Полив, подкормка и защита от вредителей"})
-        hints.append({"area": "Дом и хозяйство", "project": "Дача/Деревня", "title": "Подготовка инвентаря к уборке урожая"})
-    
-    # Осень (Сентябрь, Октябрь, Ноябрь)
-    elif current_month in [9, 10, 11]:
-        hints.append({"area": "Дом и хозяйство", "project": "Виноградник", "title": "Обрезка и укрытие виноградника на зиму"})
-        hints.append({"area": "Транспорт", "project": "Текущее обслуживание", "title": "Замена шин на зимние и проверка АКБ"})
-        hints.append({"area": "Здоровье", "project": "Питание и Пост", "title": "Рождественский пост (начинается 28 ноября)"})
-    
-    # Зима (Декабрь, Январь, Февраль)
-    else:
-        hints.append({"area": "Транспорт", "project": "Текущее обслуживание", "title": "Проверка зимней резины, антифриза и печки"})
-        hints.append({"area": "Дом и хозяйство", "project": "Квартира", "title": "Проверка отопительной системы и окон"})
-
-    return hints
+    return get_active_seasonal_hints()
 
 def get_fasting_status():
-    """Определяет статус питания на сегодня по православному календарю (упрощенная логика)."""
     today = datetime.now()
     month = today.month
     day = today.day
-    weekday = today.weekday() # 0=Пн, 2=Ср, 4=Пт
+    weekday = today.weekday()
     
-    # Основные многодневные посты (даты примерные, можно уточнять по году)
-    is_great_lent = (month == 3 and day >= 15) or (month == 4 and day <= 20) # Великий пост
-    is_petrov = (month == 6) # Петров пост (примерно)
-    is_dormition = (month == 8 and day >= 14 and day <= 27) # Успенский пост
-    is_nativity = (month == 11 and day >= 28) or (month == 12) or (month == 1 and day <= 6) # Рождественский пост
+    is_great_lent = (month == 3 and day >= 15) or (month == 4 and day <= 20)
+    is_petrov = (month == 6)
+    is_dormition = (month == 8 and day >= 14 and day <= 27)
+    is_nativity = (month == 11 and day >= 28) or (month == 12) or (month == 1 and day <= 6)
     
-    is_major_fast = is_great_lent or is_dormition # Самые строгие
-    
-    # Сплошные седмицы (когда поста нет даже в среду и пятницу) - упрощенно
-    is_solid_week = False # Здесь можно добавить логику для Пасхальной, Масленицы и т.д.
+    is_major_fast = is_great_lent or is_dormition
+    is_solid_week = False
 
     status = "Обычный день"
-    color = "#69f0ae" # Зеленый
+    color = "#69f0ae"
     advice = "Можно есть всё. Не забудь про овощи и фрукты!"
     task_suggestion = None
 
@@ -386,14 +398,14 @@ def get_fasting_status():
         color = "#69f0ae"
         advice = "Поста нет. Можно есть всё."
     elif is_major_fast:
-        if weekday in [2, 4]: # Среда и пятница
+        if weekday in [2, 4]:
             status = "Строгий пост (Среда/Пятница)"
-            color = "#ff5252" # Красный
+            color = "#ff5252"
             advice = "Исключить: мясо, молоко, яйца, рыбу, масло. Только растительная пища."
             task_suggestion = "Купить продукты для строгого поста"
         else:
             status = "Умеренный пост"
-            color = "#ffab40" # Оранжевый
+            color = "#ffab40"
             advice = "Исключить: мясо и молоко. Можно рыбу и растительное масло."
             task_suggestion = "Купить рыбу и постные продукты"
     elif is_petrov or is_nativity:
@@ -404,7 +416,7 @@ def get_fasting_status():
             task_suggestion = "Купить постные продукты"
         else:
             status = "Пост (Рыба разрешена)"
-            color = "#ffd740" # Желтый
+            color = "#ffd740"
             advice = "Можно рыбу и растительное масло."
     elif weekday in [2, 4] and not is_solid_week:
         status = "Однодневный пост (Среда/Пятница)"
@@ -412,15 +424,9 @@ def get_fasting_status():
         advice = "Исключить мясо и молоко. Рыба и масло разрешены."
         task_suggestion = "Купить рыбу и молочные продукты (завтра можно)"
 
-    return {
-        "status": status,
-        "color": color,
-        "advice": advice,
-        "task_suggestion": task_suggestion
-    }
+    return {"status": status, "color": color, "advice": advice, "task_suggestion": task_suggestion}
 
 def add_note(area: str, project: str, title: str, content: str):
-    """Добавляет новую заметку."""
     conn = get_connection()
     cursor = conn.cursor()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -432,7 +438,6 @@ def add_note(area: str, project: str, title: str, content: str):
     conn.close()
 
 def get_all_notes():
-    """Получает все заметки, отсортированные по дате."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM notes ORDER BY created_at DESC")
@@ -441,7 +446,6 @@ def get_all_notes():
     return notes
 
 def delete_note(note_id: int):
-    """Удаляет заметку."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM notes WHERE id = ?", (note_id,))
@@ -449,11 +453,8 @@ def delete_note(note_id: int):
     conn.close()
 
 def migrate_projects():
-    """Переносит проекты из PROJECTS_BY_AREA в таблицу projects (один раз)."""
     conn = get_connection()
     cursor = conn.cursor()
-    
-    # Проверяем, есть ли уже проекты в таблице
     cursor.execute("SELECT COUNT(*) as count FROM projects")
     count = cursor.fetchone()['count']
     
@@ -462,23 +463,21 @@ def migrate_projects():
         for area, projects_list in PROJECTS_BY_AREA.items():
             for project_name in projects_list:
                 try:
+                    # Добавлен strategic_weight = 5 по умолчанию
                     cursor.execute(
-                        "INSERT INTO projects (area, name) VALUES (?, ?)",
-                        (area, project_name)
+                        "INSERT INTO projects (area, name, strategic_weight) VALUES (?, ?, ?)",
+                        (area, project_name, 5)
                     )
                 except sqlite3.IntegrityError:
-                    pass  # Уже существует
+                    pass
         conn.commit()
         print("✅ Проекты мигрированы в базу данных!")
-    
     conn.close()
 
 def get_projects_by_area():
-    """Возвращает словарь {area: [project1, project2, ...]} из БД."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT area, name FROM projects WHERE is_archived = 0 ORDER BY area, name")
-    
     result = {}
     for row in cursor.fetchall():
         area = row['area']
@@ -486,24 +485,23 @@ def get_projects_by_area():
         if area not in result:
             result[area] = []
         result[area].append(name)
-    
     conn.close()
     return result
 
-def add_project(area: str, name: str):
-    """Добавляет новый проект."""
+def add_project(area: str, name: str, strategic_weight: int = 5):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("INSERT INTO projects (area, name) VALUES (?, ?)", (area, name))
+        cursor.execute('''
+            INSERT INTO projects (area, name, strategic_weight)
+            VALUES (?, ?, ?)
+        ''', (area, name, strategic_weight))
         conn.commit()
-        print(f"✅ Проект '{name}' добавлен в область '{area}'")
     except sqlite3.IntegrityError:
-        print(f"⚠️ Проект '{name}' уже существует в области '{area}'")
+        pass
     conn.close()
 
 def archive_project(project_id: int):
-    """Архивирует проект (не удаляет, а скрывает)."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE projects SET is_archived = 1 WHERE id = ?", (project_id,))
@@ -511,7 +509,6 @@ def archive_project(project_id: int):
     conn.close()
 
 def get_all_projects():
-    """Возвращает все проекты (включая архивные) для страницы управления."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM projects ORDER BY area, is_archived, name")
@@ -519,12 +516,11 @@ def get_all_projects():
     conn.close()
     return projects
 
-def update_project(project_id: int, new_name: str, new_area: str):
-    """Переименовывает проект и/или меняет его область, обновляя все ссылки."""
+def update_project(project_id: int, new_name: str, new_area: str, strategic_weight: int):
+    """Обновлено: добавлен параметр strategic_weight"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # 1. Получаем старые данные проекта
     cursor.execute("SELECT area, name FROM projects WHERE id = ?", (project_id,))
     project = cursor.fetchone()
     if not project:
@@ -534,43 +530,29 @@ def update_project(project_id: int, new_name: str, new_area: str):
     old_name = project['name']
     old_area = project['area']
     
-    # 2. Обновляем проект в таблице projects
     cursor.execute(
-        "UPDATE projects SET name = ?, area = ? WHERE id = ?",
-        (new_name, new_area, project_id)
+        "UPDATE projects SET name = ?, area = ?, strategic_weight = ? WHERE id = ?",
+        (new_name, new_area, strategic_weight, project_id)
     )
     
-    # 3. Обновляем ссылки во всех задачах
-    cursor.execute(
-        "UPDATE tasks SET project = ?, area = ? WHERE area = ? AND project = ?",
-        (new_name, new_area, old_area, old_name)
-    )
-    
-    # 4. Обновляем ссылки во всех заметках
-    cursor.execute(
-        "UPDATE notes SET project = ?, area = ? WHERE area = ? AND project = ?",
-        (new_name, new_area, old_area, old_name)
-    )
+    cursor.execute("UPDATE tasks SET project = ?, area = ? WHERE area = ? AND project = ?", (new_name, new_area, old_area, old_name))
+    cursor.execute("UPDATE notes SET project = ?, area = ? WHERE area = ? AND project = ?", (new_name, new_area, old_area, old_name))
     
     conn.commit()
     conn.close()
-    print(f"✅ Проект обновлён: '{old_area}/{old_name}' → '{new_area}/{new_name}'")
+    print(f"✅ Проект обновлён: '{old_area}/{old_name}' → '{new_area}/{new_name}' (Вес: {strategic_weight})")
     return True
 
 def restore_project(project_id: int):
-    """Восстанавливает проект из архива."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE projects SET is_archived = 0 WHERE id = ?", (project_id,))
     conn.commit()
     conn.close()
-    print(f"✅ Проект ID {project_id} восстановлен из архива")
 
 def can_delete_project(project_id: int):
-    """Проверяет, можно ли безопасно удалить проект (нет связанных задач/заметок)."""
     conn = get_connection()
     cursor = conn.cursor()
-    
     cursor.execute("SELECT area, name FROM projects WHERE id = ?", (project_id,))
     project = cursor.fetchone()
     if not project:
@@ -580,11 +562,9 @@ def can_delete_project(project_id: int):
     area = project['area']
     name = project['name']
     
-    # Проверяем задачи
     cursor.execute("SELECT COUNT(*) as count FROM tasks WHERE area = ? AND project = ?", (area, name))
     tasks_count = cursor.fetchone()['count']
     
-    # Проверяем заметки
     cursor.execute("SELECT COUNT(*) as count FROM notes WHERE area = ? AND project = ?", (area, name))
     notes_count = cursor.fetchone()['count']
     
@@ -595,22 +575,15 @@ def can_delete_project(project_id: int):
     return True, "Можно удалять"
 
 def delete_project(project_id: int):
-    """Удаляет проект навсегда (только если нет связанных задач/заметок)."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM projects WHERE id = ?", (project_id,))
     conn.commit()
     conn.close()
-    print(f"🗑️ Проект ID {project_id} удалён навсегда")
-
-from dateutil.relativedelta import relativedelta # Нам понадобится эта библиотека
 
 def complete_task_and_reschedule(task_id: int):
-    """Отмечает задачу как выполненную и, если она повторяющаяся, создаёт следующую."""
     conn = get_connection()
     cursor = conn.cursor()
-    
-    # 1. Получаем данные задачи
     cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
     task = cursor.fetchone()
     if not task:
@@ -618,33 +591,205 @@ def complete_task_and_reschedule(task_id: int):
         return
     
     task_dict = dict(task)
-    
-    # 2. Отмечаем текущую как выполненную
     cursor.execute("UPDATE tasks SET status = 'done' WHERE id = ?", (task_id,))
     
-    # 3. Если задача повторяющаяся, создаём следующую
     if task_dict['repeat'] and task_dict['repeat'] != 'none':
         next_due_date = None
         if task_dict['due_date']:
             current_date = datetime.strptime(task_dict['due_date'], "%Y-%m-%d").date()
-            if task_dict['repeat'] == 'weekly':
+            if task_dict['repeat'] == 'daily':
+                next_due_date = (current_date + relativedelta(days=1)).strftime("%Y-%m-%d")
+            elif task_dict['repeat'] == 'weekly':
                 next_due_date = (current_date + relativedelta(weeks=1)).strftime("%Y-%m-%d")
             elif task_dict['repeat'] == 'monthly':
                 next_due_date = (current_date + relativedelta(months=1)).strftime("%Y-%m-%d")
             elif task_dict['repeat'] == 'yearly':
                 next_due_date = (current_date + relativedelta(years=1)).strftime("%Y-%m-%d")
         
-        # Создаём копию задачи со статусом 'active' и новой датой
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute('''
             INSERT INTO tasks (title, area, project, priority, due_date, repeat, status, created_at)
             VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
-        ''', (
-            task_dict['title'], task_dict['area'], task_dict['project'], 
-            task_dict['priority'], next_due_date, task_dict['repeat'], now
-        ))
-        print(f"🔄 Создана следующая задача: '{task_dict['title']}' на {next_due_date}")
+        ''', (task_dict['title'], task_dict['area'], task_dict['project'], task_dict['priority'], next_due_date, task_dict['repeat'], now))
     
+    conn.commit()
+    conn.close()
+
+def get_seasonal_reminders():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM seasonal_reminders ORDER BY month_start, title")
+    reminders = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return reminders
+
+def add_seasonal_reminder(title: str, area: str, project: str, month_start: int, month_end: int, priority: str = "later"):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO seasonal_reminders (title, area, project, month_start, month_end, priority)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (title, area, project, month_start, month_end, priority))
+    conn.commit()
+    conn.close()
+
+def update_seasonal_reminder(reminder_id: int, title: str, area: str, project: str, month_start: int, month_end: int, priority: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE seasonal_reminders 
+        SET title = ?, area = ?, project = ?, month_start = ?, month_end = ?, priority = ?
+        WHERE id = ?
+    ''', (title, area, project, month_start, month_end, priority, reminder_id))
+    conn.commit()
+    conn.close()
+
+def delete_seasonal_reminder(reminder_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM seasonal_reminders WHERE id = ?", (reminder_id,))
+    conn.commit()
+    conn.close()
+
+def toggle_seasonal_reminder(reminder_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE seasonal_reminders SET is_active = 1 - is_active WHERE id = ?", (reminder_id,))
+    conn.commit()
+    conn.close()
+
+def get_active_seasonal_hints():
+    conn = get_connection()
+    cursor = conn.cursor()
+    current_month = datetime.now().month
+    cursor.execute('''
+        SELECT * FROM seasonal_reminders 
+        WHERE is_active = 1 AND month_start <= ? AND month_end >= ?
+        ORDER BY title
+    ''', (current_month, current_month))
+    hints = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return hints
+
+def get_temperature_reminders():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM temperature_reminders ORDER BY temperature")
+    reminders = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return reminders
+
+def add_temperature_reminder(title: str, area: str, project: str, operator: str, temperature: float, priority: str = "later"):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO temperature_reminders (title, area, project, operator, temperature, priority)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (title, area, project, operator, temperature, priority))
+    conn.commit()
+    conn.close()
+
+def delete_temperature_reminder(reminder_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM temperature_reminders WHERE id = ?", (reminder_id,))
+    conn.commit()
+    conn.close()
+
+def toggle_temperature_reminder(reminder_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE temperature_reminders SET is_active = 1 - is_active WHERE id = ?", (reminder_id,))
+    conn.commit()
+    conn.close()
+
+def update_temperature_reminder(reminder_id: int, title: str, area: str, project: str, operator: str, temperature: float, priority: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE temperature_reminders 
+        SET title = ?, area = ?, project = ?, operator = ?, temperature = ?, priority = ?
+        WHERE id = ?
+    ''', (title, area, project, operator, temperature, priority, reminder_id))
+    conn.commit()
+    conn.close()
+
+USE_MOCK_WEATHER = True  
+_weather_cache = {"data": None, "timestamp": 0}
+
+def get_weather_forecast():
+    import time
+    now = time.time()
+    if _weather_cache["data"] and (now - _weather_cache["timestamp"]) < 3600:
+        return _weather_cache["data"]
+    
+    if USE_MOCK_WEATHER:
+        forecast = [
+            {'date': '2026-10-20', 'max': 8.0, 'min': 4.0},
+            {'date': '2026-10-21', 'max': 5.0, 'min': 1.0},
+            {'date': '2026-10-22', 'max': 2.0, 'min': -1.0},
+            {'date': '2026-10-23', 'max': -1.0, 'min': -4.0},
+            {'date': '2026-10-24', 'max': -3.0, 'min': -6.0},
+        ]
+        _weather_cache["data"] = forecast
+        _weather_cache["timestamp"] = now
+        return forecast
+
+    try:
+        url = "https://wttr.in/Moscow?format=j1"
+        response = requests.get(url, timeout=3)
+        response.raise_for_status()
+        data = response.json()
+        forecast = [{'date': day['date'], 'max': float(day['maxtempC']), 'min': float(day['mintempC'])} for i, day in enumerate(data.get('weather', [])[:7])]
+        _weather_cache["data"] = forecast
+        _weather_cache["timestamp"] = now
+        return forecast
+    except Exception as e:
+        print(f"⚠️ Ошибка получения погоды: {e}")
+        return _weather_cache["data"] or []
+
+def get_active_temperature_hints():
+    reminders = get_temperature_reminders()
+    active_reminders = [r for r in reminders if r['is_active']]
+    if not active_reminders:
+        return []
+    
+    forecast = get_weather_forecast()
+    if not forecast:
+        return []
+    
+    triggered = []
+    today = datetime.now().date()
+    
+    for reminder in active_reminders:
+        for day in forecast:
+            day_date = datetime.strptime(day['date'], "%Y-%m-%d").date()
+            days_left = (day_date - today).days
+            
+            triggered_temp = None
+            if reminder['operator'] == 'below' and day['max'] <= reminder['temperature']:
+                triggered_temp = day['max']
+            elif reminder['operator'] == 'above' and day['min'] >= reminder['temperature']:
+                triggered_temp = day['min']
+            
+            if triggered_temp is not None:
+                if days_left == 0: date_str = "сегодня"
+                elif days_left == 1: date_str = "завтра"
+                else: date_str = f"через {days_left} дн. ({day['date']})"
+                
+                triggered.append({
+                    **reminder,
+                    'trigger_date': date_str,
+                    'trigger_temp': triggered_temp,
+                    'operator_ru': 'ниже' if reminder['operator'] == 'below' else 'выше'
+                })
+                break
+    return triggered
+
+def toggle_pin_task(task_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE tasks SET pinned = 1 - pinned WHERE id = ?", (task_id,))
     conn.commit()
     conn.close()
 

@@ -14,7 +14,7 @@
         .form-card { background-color: #1e1e1e; padding: 20px; border-radius: 8px; margin-bottom: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; color: #b0bec5; font-weight: bold; }
-        input[type="text"], select { width: 100%; padding: 10px; background-color: #2d2d2d; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; font-size: 1em; box-sizing: border-box; }
+        input[type="text"], input[type="number"], select { width: 100%; padding: 10px; background-color: #2d2d2d; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; font-size: 1em; box-sizing: border-box; }
         input:focus, select:focus { outline: none; border-color: #00e5ff; }
         .submit-btn { background-color: #00e5ff; color: #121212; padding: 12px; border: none; border-radius: 4px; font-size: 1em; font-weight: bold; cursor: pointer; width: 100%; }
         .submit-btn:hover { background-color: #00b8d4; }
@@ -38,6 +38,11 @@
             background-color: #161616;
         }
         .project-name { font-size: 1em; }
+        .project-meta { 
+            font-size: 0.85em; 
+            color: #888; 
+            margin-top: 4px;
+        }
         .btn { 
             padding: 6px 12px; 
             border: none; 
@@ -102,6 +107,13 @@
                         <input type="text" id="name" name="name" required placeholder="Например: Ремонт ванной">
                     </div>
                 </div>
+                
+                <div class="form-group">
+                    <label for="strategic_weight">Стратегический вес (1-10):</label>
+                    <input type="number" id="strategic_weight" name="strategic_weight" min="1" max="10" value="5" required>
+                    <small style="color: #888; display: block; margin-top: 4px;">10 = Ключевая цель (DevOps, Здоровье), 1 = Рутинная мелочь</small>
+                </div>
+                
                 <button type="submit" class="submit-btn">Создать проект</button>
             </form>
         </div>
@@ -117,8 +129,13 @@
                     {% set current_area = project['area'] %}
                 {% endif %}
                 
-                <div class="project-item">
-                    <span class="project-name">{{ project['name'] }}</span>
+                <div class="project-item" style="border-left-color: {% if project['strategic_weight'] >= 8 %}#ff5252{% elif project['strategic_weight'] <= 3 %}#888{% else %}#69f0ae{% endif %};">
+                    <div>
+                        <span class="project-name">{{ project['name'] }}</span>
+                        <div class="project-meta">
+                            ⭐ Вес: <strong style="color: {% if project['strategic_weight'] >= 8 %}#ff5252{% elif project['strategic_weight'] <= 3 %}#888{% else %}#00e5ff{% endif %}">{{ project['strategic_weight'] }}/10</strong>
+                        </div>
+                    </div>
                     <div class="project-actions">
                         <a href="/edit_project/{{ project['id'] }}" class="btn btn-edit">✏️ Редактировать</a>
                         <form method="POST" action="/archive_project/{{ project['id'] }}" style="display: inline;">
@@ -132,7 +149,7 @@
 
         <!-- Архивные проекты -->
         <div class="archive-section">
-            <h2 class="archive-title">📦 Архив проектов</h2>
+            <h2 class="archive-title"> Архив проектов</h2>
             <p class="archive-hint">Здесь проекты, которые ты архивировал. Их можно восстановить или удалить навсегда (если нет связанных задач).</p>
             
             {% set has_archived = false %}
@@ -140,7 +157,12 @@
                 {% if project['is_archived'] %}
                     {% set has_archived = true %}
                     <div class="project-item archived">
-                        <span class="project-name">{{ project['name'] }} <span style="color: #666; font-size: 0.85em;">({{ project['area'] }})</span></span>
+                        <div>
+                            <span class="project-name">{{ project['name'] }} <span style="color: #666; font-size: 0.85em;">({{ project['area'] }})</span></span>
+                            <div class="project-meta">
+                                ⭐ Вес: {{ project['strategic_weight'] or 5 }}/10
+                            </div>
+                        </div>
                         <div class="project-actions">
                             <form method="POST" action="/restore_project/{{ project['id'] }}" style="display: inline;">
                                 <button type="submit" class="btn btn-restore">♻️ Восстановить</button>
